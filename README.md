@@ -1,20 +1,20 @@
 # SMC LLM Trade Setup Validator
 
-Phase 1 scaffold for the LLM-powered Smart Money Concepts TradingView workflow.
+Local MVP for an LLM-powered Smart Money Concepts TradingView workflow.
 
-The MVP is decision support only. It does not place trades, connect to brokers, or create TradingView alerts automatically.
+The MVP is decision support only. It does not place trades, connect to brokers, use replay trading, or create TradingView alerts automatically.
 
-## Phase 1 Contents
+## Current Scope
 
-- Top-level PRD copy in `docs/PRD.md`
-- JSON schemas in `schemas/`
-- Example payloads in `examples/`
-- FastAPI backend skeleton in `backend/app/`
-- Pydantic models for TradingView setup alerts and LLM trade decisions
-- SQLite database setup with SQLAlchemy models
-- Deterministic validator for LLM outputs
-- Mock LLM provider
-- Initial pytest coverage for schemas and validator rules
+- Pine indicator implemented and validated through TradingView MCP for ES/NQ on 5m, 15m, 1h, and 4h.
+- FastAPI backend receives TradingView-style setup alerts.
+- Incoming webhook JSON is validated against `schemas/setup_alert.schema.json`.
+- Pydantic models parse setup alerts and LLM decisions.
+- Mock news and Telegram context are added.
+- Mock deterministic LLM provider returns strict JSON.
+- Deterministic validator approves or converts decisions to `NO_TRADE`.
+- SQLite stores setups, context, decisions, validator results, and outcome placeholders.
+- Local dashboard displays latest setup, history, context, decision, validation, and raw payloads.
 
 ## Run Backend Locally
 
@@ -32,6 +32,49 @@ Health check:
 curl http://localhost:8000/health
 ```
 
+Dashboard:
+
+```text
+http://localhost:8000/dashboard
+```
+
+The root route `/` also opens the dashboard.
+
+## Send A Sample Webhook
+
+From the project root, with the backend running:
+
+```bash
+backend/.venv/bin/python backend/scripts/send_sample_webhook.py
+```
+
+Equivalent curl:
+
+```bash
+curl -X POST http://localhost:8000/webhook/tradingview \
+  -H 'Content-Type: application/json' \
+  -H 'X-Webhook-Secret: change-me' \
+  --data @examples/tradingview_webhook_example.json
+```
+
+The alias path also works:
+
+```text
+POST /webhooks/tradingview
+```
+
+## API Routes
+
+- `GET /health`
+- `GET /setups`
+- `GET /setups/{id_or_setup_id}`
+- `GET /decisions/latest`
+- `POST /webhook/tradingview`
+- `POST /webhooks/tradingview`
+- `POST /setups/{setup_id}/outcome`
+
+Outcome status values are `WIN`, `LOSS`, `EXPIRED`, and `UNKNOWN`.
+
 ## Run Tests
 
 ```bash
@@ -42,8 +85,19 @@ pytest
 
 ## Environment
 
-Copy `backend/.env.example` to `backend/.env` for local overrides. By default, the backend uses the mock LLM provider when no `OPENAI_API_KEY` is configured.
+Copy `backend/.env.example` to `backend/.env` for local overrides.
 
-## TradingView
+Phase 3 uses `LLM_PROVIDER=mock` by default. OpenAI-compatible live routing is intentionally deferred.
 
-TradingView MCP, Pine compilation, chart validation, and alert configuration are not part of Phase 1. Alerts must not be created without explicit confirmation.
+`.env`, `backend/.env`, SQLite database files, and local virtualenvs are gitignored.
+
+## Validation Docs
+
+- Phase 2B TradingView validation: `docs/phase2b_validation.md`
+- Phase 2C 4h validation: `docs/phase2c_4h_validation.md`
+
+Screenshots remain in:
+
+```text
+/Users/rakanrouchdi/tradingview-mcp-jackson/screenshots/
+```

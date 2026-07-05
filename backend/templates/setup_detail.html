@@ -3,13 +3,120 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Setup Detail</title>
+    <title>{{ setup.setup_id }}</title>
     <link rel="stylesheet" href="/static/app.css">
   </head>
   <body>
     <main class="shell">
-      <h1>Setup Detail</h1>
-      <p>Detail view is reserved for a later phase.</p>
+      <header class="topbar">
+        <div>
+          <h1>{{ setup.symbol }} {{ setup.timeframe }}</h1>
+          <p>{{ setup.setup_id }}</p>
+        </div>
+        <a class="button" href="/dashboard">Dashboard</a>
+      </header>
+
+      <section class="summary-grid">
+        <article class="metric">
+          <span>Direction</span>
+          <strong>{{ setup.direction }}</strong>
+        </article>
+        <article class="metric">
+          <span>Rule Score</span>
+          <strong>{{ setup.rule_score }}</strong>
+        </article>
+        <article class="metric">
+          <span>Status</span>
+          <strong>{{ setup.status }}</strong>
+        </article>
+        <article class="metric">
+          <span>Received</span>
+          <strong>{{ setup.received_at }}</strong>
+        </article>
+      </section>
+
+      <section class="two-column">
+        <article class="panel">
+          <h2>SMC Features</h2>
+          {% set features = setup.parsed_setup.features %}
+          <dl class="kv">
+            <div><dt>BOS</dt><dd>{{ features.bos.state }}</dd></div>
+            <div><dt>FVG</dt><dd>{{ features.fvg.state }}</dd></div>
+            <div><dt>Sweep</dt><dd>{{ features.liquidity_sweep.state }}</dd></div>
+            <div><dt>SMT</dt><dd>{{ features.smt.state }}</dd></div>
+            <div><dt>Volume</dt><dd>{{ features.volume.state }} / {{ features.volume.rvol }}</dd></div>
+            <div><dt>Consolidation</dt><dd>{{ "ACTIVE" if features.consolidation.active else "INACTIVE" }}</dd></div>
+            <div><dt>HTF Bias</dt><dd>{{ features.htf_bias }}</dd></div>
+            <div><dt>Displacement</dt><dd>{{ features.displacement }}</dd></div>
+          </dl>
+        </article>
+
+        <article class="panel">
+          <h2>Session</h2>
+          {% set session = setup.parsed_setup.session %}
+          <dl class="kv">
+            <div><dt>Name</dt><dd>{{ session.name }}</dd></div>
+            <div><dt>Current High</dt><dd>{{ session.current_high }}</dd></div>
+            <div><dt>Current Low</dt><dd>{{ session.current_low }}</dd></div>
+            <div><dt>Completed High</dt><dd>{{ session.completed_high }}</dd></div>
+            <div><dt>Completed Low</dt><dd>{{ session.completed_low }}</dd></div>
+          </dl>
+        </article>
+      </section>
+
+      <section class="two-column">
+        <article class="panel">
+          <h2>News Context</h2>
+          <pre>{{ news_context | tojson(indent=2) if news_context else "{}" }}</pre>
+        </article>
+        <article class="panel">
+          <h2>Telegram Context</h2>
+          <pre>{{ telegram_context | tojson(indent=2) if telegram_context else "{}" }}</pre>
+        </article>
+      </section>
+
+      <section class="panel">
+        <h2>Decisions</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Created</th>
+                <th>Model</th>
+                <th>Action</th>
+                <th>Confidence</th>
+                <th>Entry</th>
+                <th>SL</th>
+                <th>TP1</th>
+                <th>RR</th>
+                <th>Validation</th>
+                <th>Rejection</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for decision in decisions %}
+                <tr>
+                  <td>{{ decision.created_at }}</td>
+                  <td>{{ decision.model }}</td>
+                  <td>{{ decision.final_action }}</td>
+                  <td>{{ decision.confidence }}</td>
+                  <td>{{ decision.entry_preferred }}</td>
+                  <td>{{ decision.stop_loss }}</td>
+                  <td>{{ decision.take_profit_1 }}</td>
+                  <td>{{ decision.risk_reward }}</td>
+                  <td>{{ decision.validator_status }}</td>
+                  <td>{{ decision.validation_rejection_reason or "None" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Raw Webhook Payload</h2>
+        <pre>{{ raw_payload_json }}</pre>
+      </section>
     </main>
   </body>
 </html>

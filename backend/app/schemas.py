@@ -70,6 +70,13 @@ class TradeAction(str, Enum):
     NO_TRADE = "NO_TRADE"
 
 
+class OutcomeStatus(str, Enum):
+    WIN = "WIN"
+    LOSS = "LOSS"
+    EXPIRED = "EXPIRED"
+    UNKNOWN = "UNKNOWN"
+
+
 class Bias(str, Enum):
     BULLISH = "BULLISH"
     BEARISH = "BEARISH"
@@ -252,3 +259,11 @@ def validate_setup_alert(payload: dict[str, Any]) -> SetupAlert:
 
 def validate_llm_trade_decision(payload: dict[str, Any]) -> LLMTradeDecision:
     return LLMTradeDecision.model_validate(payload)
+
+
+class OutcomeUpdate(StrictModel):
+    outcome: OutcomeStatus
+    hit_target: str | None = None
+    mfe_points: float | None = None
+    mae_points: float | None = None
+    notes: str | None = None

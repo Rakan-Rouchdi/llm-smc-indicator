@@ -1,23 +1,30 @@
-import json
-from datetime import datetime, timezone
-from typing import Annotated
+from pathlib import Path
+from typing import Annotated, Any
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
+from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.context import build_context
 from app.dashboard import router as dashboard_router
-from app.database import SessionLocal, get_db, init_db
-from app.llm_client import get_llm_provider
-from app.llm_prompt import PROMPT_VERSION
+from app.database import get_db, init_db
 from app.models import LLMDecisionRecord, SetupAlertRecord
-from app.schemas import SetupAlert
-from app.validators import ValidationPolicy, validate_llm_decision
+from app.schema_validation import format_schema_error, validate_setup_alert_schema
+from app.schemas import OutcomeUpdate
+from app.workflow import (
+    get_latest_decision_record,
+    process_tradingview_alert,
+    record_outcome,
+    serialize_decision,
+    serialize_outcome,
+    serialize_setup,
+)
 
-app = FastAPI(title="SMC LLM Trade Setup Validator", version="0.1.0")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+
+app = FastAPI(title="SMC LLM Trade Setup Validator", version="0.3.0")
+app.mount("/static", StaticFiles(directory=str(BACKEND_ROOT / "static")), name="static")
 app.include_router(dashboard_router)
 
 
@@ -41,71 +48,80 @@ def _authenticate(
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
 
 
-def process_setup_decision(setup_payload: dict) -> None:
-    settings = get_settings()
-    setup_alert = SetupAlert.model_validate(setup_payload)
-    context = build_context(setup_alert.root_symbol.value)
-    llm_input = {
-        "schema_version": "1.0",
-        "prompt_version": PROMPT_VERSION,
-        "setup_alert": setup_alert.model_dump(mode="json"),
-        "context": context,
-        "risk_policy": {
-            "min_confidence_for_trade": settings.llm_confidence_approve_threshold,
-            "min_risk_reward": 1.5,
-            "max_setup_age_minutes": settings.max_setup_age_minutes,
-            "no_trade_during_blackout": True,
-            "no_trade_when_consolidation": True,
-        },
+async def _read_json_object(request: Request) -> dict[str, Any]:
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Request body must be valid JSON") from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=422, detail="Webhook payload must be a JSON object")
+    return payload
+
+
+@app.get("/setups")
+def list_setups(
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> dict[str, object]:
+    records = (
+        db.query(SetupAlertRecord)
+        .order_by(SetupAlertRecord.received_at.desc(), SetupAlertRecord.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return {"setups": [serialize_setup(record) for record in records]}
+
+
+@app.get("/setups/{setup_identifier}")
+def get_setup(setup_identifier: str, db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
+    query = db.query(SetupAlertRecord)
+    record = None
+    if setup_identifier.isdigit():
+        record = query.filter(SetupAlertRecord.id == int(setup_identifier)).one_or_none()
+    if record is None:
+        record = query.filter(SetupAlertRecord.setup_id == setup_identifier).one_or_none()
+    if record is None:
+        raise HTTPException(status_code=404, detail="Setup not found")
+
+    decisions = (
+        db.query(LLMDecisionRecord)
+        .filter(LLMDecisionRecord.setup_id == record.setup_id)
+        .order_by(LLMDecisionRecord.created_at.desc(), LLMDecisionRecord.id.desc())
+        .all()
+    )
+    return {
+        "setup": serialize_setup(record),
+        "decisions": [serialize_decision(decision) for decision in decisions],
     }
 
-    provider = get_llm_provider(settings)
-    llm_decision = provider.decide(llm_input)
-    validator_result = validate_llm_decision(
-        setup_alert=setup_alert,
-        decision=llm_decision,
-        context=context,
-        policy=ValidationPolicy(
-            min_confidence_for_trade=settings.llm_confidence_approve_threshold,
-            min_risk_reward=1.5,
-            max_setup_age_minutes=settings.max_setup_age_minutes,
-        ),
-        current_time=datetime.now(timezone.utc),
-    )
 
-    with SessionLocal() as db:
-        db.add(
-            LLMDecisionRecord(
-                setup_id=setup_alert.setup_id,
-                model=provider.model_name,
-                prompt_version=PROMPT_VERSION,
-                raw_input_json=json.dumps(llm_input, default=str),
-                raw_output_json=llm_decision.model_dump_json(by_alias=True),
-                validator_status=validator_result.validator_status,
-                final_action=validator_result.final_action.value,
-                confidence=validator_result.final_confidence,
-                entry_preferred=llm_decision.entry.preferred,
-                stop_loss=llm_decision.stop_loss,
-                take_profit_1=llm_decision.take_profit.tp1,
-                reason_summary=llm_decision.reason_summary,
-                blocking_conditions_json=json.dumps(validator_result.rejections),
-            )
-        )
-        setup_record = (
-            db.query(SetupAlertRecord)
-            .filter(SetupAlertRecord.setup_id == setup_alert.setup_id)
-            .one_or_none()
-        )
-        if setup_record is not None:
-            setup_record.status = "PROCESSED"
-        db.commit()
+@app.get("/decisions/latest")
+def latest_decision(db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
+    record = get_latest_decision_record(db)
+    if record is None:
+        raise HTTPException(status_code=404, detail="No decisions recorded")
+    return {"decision": serialize_decision(record)}
+
+
+@app.post("/setups/{setup_id}/outcome")
+def mark_outcome(
+    setup_id: str,
+    outcome: OutcomeUpdate,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, object]:
+    setup = db.query(SetupAlertRecord).filter(SetupAlertRecord.setup_id == setup_id).one_or_none()
+    if setup is None:
+        raise HTTPException(status_code=404, detail="Setup not found")
+
+    record = record_outcome(setup_id, outcome, db)
+    return {"status": "recorded", "outcome": serialize_outcome(record)}
 
 
 @app.post("/webhook/tradingview")
 @app.post("/webhooks/tradingview")
-def tradingview_webhook(
-    alert: SetupAlert,
-    background_tasks: BackgroundTasks,
+async def tradingview_webhook(
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
     x_webhook_secret: Annotated[str | None, Header(alias="X-Webhook-Secret")] = None,
@@ -113,27 +129,10 @@ def tradingview_webhook(
 ) -> dict[str, object]:
     _authenticate(x_webhook_secret, secret, settings)
 
-    existing = (
-        db.query(SetupAlertRecord)
-        .filter(SetupAlertRecord.setup_id == alert.setup_id)
-        .one_or_none()
-    )
-    if existing is not None:
-        return {"status": "duplicate", "setup_id": alert.setup_id, "duplicate": True}
+    payload = await _read_json_object(request)
+    try:
+        validate_setup_alert_schema(payload)
+    except JsonSchemaValidationError as exc:
+        raise HTTPException(status_code=422, detail=format_schema_error(exc)) from exc
 
-    db.add(
-        SetupAlertRecord(
-            setup_id=alert.setup_id,
-            symbol=alert.symbol,
-            timeframe=alert.timeframe,
-            bar_time=alert.bar_time,
-            direction=alert.direction.value,
-            rule_score=alert.rule_score,
-            payload_json=alert.model_dump_json(),
-            status="ACCEPTED",
-        )
-    )
-    db.commit()
-
-    background_tasks.add_task(process_setup_decision, alert.model_dump(mode="json"))
-    return {"status": "accepted", "setup_id": alert.setup_id, "duplicate": False}
+    return process_tradingview_alert(payload, db, settings)

@@ -22,6 +22,8 @@ class SetupAlertRecord(Base):
     direction: Mapped[str] = mapped_column(String(20))
     rule_score: Mapped[int] = mapped_column(Integer)
     payload_json: Mapped[str] = mapped_column(Text)
+    parsed_setup_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    enriched_context_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="ACCEPTED")
 
 
@@ -41,8 +43,12 @@ class LLMDecisionRecord(Base):
     entry_preferred: Mapped[float | None] = mapped_column(Float, nullable=True)
     stop_loss: Mapped[float | None] = mapped_column(Float, nullable=True)
     take_profit_1: Mapped[float | None] = mapped_column(Float, nullable=True)
+    take_profit_2: Mapped[float | None] = mapped_column(Float, nullable=True)
+    risk_reward: Mapped[float | None] = mapped_column(Float, nullable=True)
     reason_summary: Mapped[str] = mapped_column(Text)
     blocking_conditions_json: Mapped[str] = mapped_column(Text)
+    validator_result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    validation_rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class NewsEventRecord(Base):

@@ -77,6 +77,13 @@ def _coerce_decision(decision: LLMTradeDecision | dict[str, Any]) -> LLMTradeDec
         return _reject([f"Malformed LLM output: {exc.errors()[0]['msg']}"])
 
 
+def _news_blackout_active(context: dict[str, Any]) -> bool:
+    news = context.get("news")
+    if isinstance(news, dict) and news.get("blackout_active") is True:
+        return True
+    return context.get("news_blackout_active") is True
+
+
 def validate_llm_decision(
     setup_alert: SetupAlert,
     decision: LLMTradeDecision | dict[str, Any],
@@ -98,7 +105,7 @@ def validate_llm_decision(
     if llm_decision.setup_id != setup_alert.setup_id:
         rejections.append("LLM setup_id does not match setup alert")
 
-    if policy.no_trade_during_blackout and context.get("news_blackout_active") is True:
+    if policy.no_trade_during_blackout and _news_blackout_active(context):
         rejections.append("News blackout active")
 
     if policy.no_trade_when_consolidation and setup_alert.features.consolidation.active:

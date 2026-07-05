@@ -3,14 +3,165 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SMC LLM Trade Setup Validator</title>
+    <title>SMC LLM Dashboard</title>
     <link rel="stylesheet" href="/static/app.css">
   </head>
   <body>
     <main class="shell">
-      <h1>SMC LLM Trade Setup Validator</h1>
-      <p>{{ phase }} backend scaffold is running.</p>
-      <p>Confidence is a setup-quality score, not a win probability.</p>
+      <header class="topbar">
+        <div>
+          <h1>SMC LLM Dashboard</h1>
+          <p>Mock-context webhook decisions</p>
+        </div>
+        <a class="button" href="/health">Health</a>
+      </header>
+
+      {% if latest_setup %}
+        <section class="summary-grid">
+          <article class="metric">
+            <span>Symbol</span>
+            <strong>{{ latest_setup.symbol }}</strong>
+          </article>
+          <article class="metric">
+            <span>Timeframe</span>
+            <strong>{{ latest_setup.timeframe }}</strong>
+          </article>
+          <article class="metric">
+            <span>Direction</span>
+            <strong>{{ latest_setup.direction }}</strong>
+          </article>
+          <article class="metric">
+            <span>Rule Score</span>
+            <strong>{{ latest_setup.rule_score }}</strong>
+          </article>
+          <article class="metric">
+            <span>Decision</span>
+            <strong>{{ latest_decision.final_action if latest_decision else "PENDING" }}</strong>
+          </article>
+          <article class="metric">
+            <span>Validation</span>
+            <strong>{{ latest_decision.validator_status if latest_decision else "PENDING" }}</strong>
+          </article>
+        </section>
+
+        <section class="two-column">
+          <article class="panel">
+            <h2>Latest Setup</h2>
+            {% set features = latest_setup.parsed_setup.features %}
+            {% set session = latest_setup.parsed_setup.session %}
+            <dl class="kv">
+              <div><dt>Setup ID</dt><dd>{{ latest_setup.setup_id }}</dd></div>
+              <div><dt>Bar Time</dt><dd>{{ latest_setup.bar_time }}</dd></div>
+              <div><dt>Session</dt><dd>{{ session.name }}</dd></div>
+              <div><dt>BOS</dt><dd>{{ features.bos.state }}</dd></div>
+              <div><dt>FVG</dt><dd>{{ features.fvg.state }}</dd></div>
+              <div><dt>Sweep</dt><dd>{{ features.liquidity_sweep.state }}</dd></div>
+              <div><dt>SMT</dt><dd>{{ features.smt.state }}</dd></div>
+              <div><dt>RVOL</dt><dd>{{ features.volume.state }} / {{ features.volume.rvol }}</dd></div>
+              <div><dt>Consolidation</dt><dd>{{ "ACTIVE" if features.consolidation.active else "INACTIVE" }}</dd></div>
+              <div><dt>HTF Bias</dt><dd>{{ features.htf_bias }}</dd></div>
+            </dl>
+          </article>
+
+          <article class="panel">
+            <h2>Latest Decision</h2>
+            {% if latest_decision %}
+              {% set llm = latest_decision.llm_decision %}
+              <dl class="kv">
+                <div><dt>LLM Action</dt><dd>{{ llm.action }}</dd></div>
+                <div><dt>Final Action</dt><dd>{{ latest_decision.final_action }}</dd></div>
+                <div><dt>Confidence</dt><dd>{{ latest_decision.confidence }}</dd></div>
+                <div><dt>Entry</dt><dd>{{ latest_decision.entry_preferred }}</dd></div>
+                <div><dt>Stop Loss</dt><dd>{{ latest_decision.stop_loss }}</dd></div>
+                <div><dt>TP1</dt><dd>{{ latest_decision.take_profit_1 }}</dd></div>
+                <div><dt>RR</dt><dd>{{ latest_decision.risk_reward }}</dd></div>
+                <div><dt>Rejection</dt><dd>{{ latest_decision.validation_rejection_reason or "None" }}</dd></div>
+              </dl>
+              <p class="reason">{{ latest_decision.reason_summary }}</p>
+            {% else %}
+              <p class="empty">No decision recorded.</p>
+            {% endif %}
+          </article>
+        </section>
+
+        <section class="two-column">
+          <article class="panel">
+            <h2>Mock News Context</h2>
+            {% if news_context %}
+              <dl class="kv">
+                <div><dt>Blackout</dt><dd>{{ news_context.blackout_active }}</dd></div>
+                <div><dt>Bias</dt><dd>{{ news_context.market_bias }}</dd></div>
+                <div><dt>Event</dt><dd>{{ news_context.high_impact_event_name or "None" }}</dd></div>
+                <div><dt>Minutes To Event</dt><dd>{{ news_context.minutes_to_event if news_context.minutes_to_event is not none else "None" }}</dd></div>
+              </dl>
+              <p class="reason">{{ news_context.headline_summary }}</p>
+            {% else %}
+              <p class="empty">No news context recorded.</p>
+            {% endif %}
+          </article>
+
+          <article class="panel">
+            <h2>Mock Telegram Context</h2>
+            {% if telegram_context %}
+              <dl class="kv">
+                <div><dt>Bullish</dt><dd>{{ telegram_context.bullish_count }}</dd></div>
+                <div><dt>Bearish</dt><dd>{{ telegram_context.bearish_count }}</dd></div>
+                <div><dt>Neutral</dt><dd>{{ telegram_context.neutral_count }}</dd></div>
+                <div><dt>Sources</dt><dd>{{ telegram_context.source_count }}</dd></div>
+              </dl>
+              <p class="reason">{{ telegram_context.summary }}</p>
+            {% else %}
+              <p class="empty">No Telegram context recorded.</p>
+            {% endif %}
+          </article>
+        </section>
+
+        <section class="panel">
+          <h2>Setup History</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Setup</th>
+                  <th>Symbol</th>
+                  <th>TF</th>
+                  <th>Direction</th>
+                  <th>Score</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for setup in setup_history %}
+                  <tr>
+                    <td><a href="/dashboard/setups/{{ setup.setup_id }}">{{ setup.setup_id }}</a></td>
+                    <td>{{ setup.symbol }}</td>
+                    <td>{{ setup.timeframe }}</td>
+                    <td>{{ setup.direction }}</td>
+                    <td>{{ setup.rule_score }}</td>
+                    <td>{{ setup.status }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="two-column">
+          <article class="panel">
+            <h2>Raw Webhook Payload</h2>
+            <pre>{{ raw_payload_json }}</pre>
+          </article>
+          <article class="panel">
+            <h2>Raw LLM Payload</h2>
+            <pre>{{ llm_decision_json }}</pre>
+          </article>
+        </section>
+      {% else %}
+        <section class="panel">
+          <h2>No Setups</h2>
+          <p class="empty">No webhook payloads have been received.</p>
+        </section>
+      {% endif %}
     </main>
   </body>
 </html>

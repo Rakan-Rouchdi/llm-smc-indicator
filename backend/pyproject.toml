@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "smc-llm-trade-validator"
-version = "0.1.0"
+version = "0.3.0"
 description = "FastAPI backend for the SMC LLM Trade Setup Validator MVP"
 requires-python = ">=3.11"
 dependencies = [
@@ -14,6 +14,7 @@ dependencies = [
   "pydantic-settings>=2.4.0",
   "SQLAlchemy>=2.0.30",
   "Jinja2>=3.1.4",
+  "jsonschema>=4.23.0",
   "python-dotenv>=1.0.1",
   "openai>=1.40.0",
 ]

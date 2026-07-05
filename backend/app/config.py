@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./smc_llm.db"
     webhook_secret: str = "change-me"
     openai_api_key: str | None = None
+    llm_provider: str = "mock"
     llm_model: str = "gpt-4o-mini"
     llm_timeout_seconds: int = 20
     llm_confidence_approve_threshold: int = 70

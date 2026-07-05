@@ -28,7 +28,9 @@ class MockLLMProvider:
     def decide(self, llm_input: dict[str, Any]) -> LLMTradeDecision:
         setup = SetupAlert.model_validate(llm_input["setup_alert"])
         context = llm_input.get("context", {})
-        blocked = bool(context.get("news_blackout_active")) or setup.features.consolidation.active
+        news = context.get("news") if isinstance(context.get("news"), dict) else {}
+        blackout_active = bool(context.get("news_blackout_active")) or bool(news.get("blackout_active"))
+        blocked = blackout_active or setup.features.consolidation.active
 
         if blocked:
             return LLMTradeDecision(
@@ -42,7 +44,7 @@ class MockLLMProvider:
                 take_profit=TakeProfit(tp1=None, tp2=None),
                 risk_reward=None,
                 expires_at=None,
-                headline_driver="Mock blocked context",
+                headline_driver=news.get("headline_summary") or "Mock blocked context",
                 reason_summary="Mock provider returned no trade because a blocking condition is active.",
                 confluence_notes=[],
                 blocking_conditions=["Mock blocking condition active"],
@@ -72,7 +74,7 @@ class MockLLMProvider:
             take_profit=TakeProfit(tp1=setup.risk.take_profit_1, tp2=None),
             risk_reward=setup.risk.risk_reward,
             expires_at=setup.bar_time + timedelta(minutes=15),
-            headline_driver="None",
+            headline_driver=news.get("headline_summary") or "None",
             reason_summary="Mock provider mirrored the structured setup into a deterministic test decision.",
             confluence_notes=[
                 f"{setup.direction.value.title()} source setup",
@@ -94,6 +96,6 @@ class OpenAICompatibleLLMProvider:
 
 
 def get_llm_provider(settings: Settings) -> LLMProvider:
-    if settings.openai_api_key:
+    if settings.llm_provider == "openai" and settings.openai_api_key:
         return OpenAICompatibleLLMProvider(settings)
     return MockLLMProvider()
