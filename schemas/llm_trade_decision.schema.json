@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LLMTradeDecision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "setup_id",
+    "action",
+    "bias",
+    "confidence",
+    "entry",
+    "stop_loss",
+    "take_profit",
+    "risk_reward",
+    "expires_at",
+    "headline_driver",
+    "reason_summary",
+    "confluence_notes",
+    "blocking_conditions",
+    "validation_notes",
+    "requires_human_review"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "setup_id": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "BUY",
+        "SELL",
+        "NO_TRADE"
+      ]
+    },
+    "bias": {
+      "type": "string",
+      "enum": [
+        "BULLISH",
+        "BEARISH",
+        "NEUTRAL"
+      ]
+    },
+    "confidence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "low",
+        "high",
+        "preferred"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "FVG",
+            "OB",
+            "IFVG",
+            "NONE"
+          ]
+        },
+        "low": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "high": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "preferred": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "stop_loss": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "take_profit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tp1",
+        "tp2"
+      ],
+      "properties": {
+        "tp1": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tp2": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "risk_reward": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "headline_driver": {
+      "type": "string"
+    },
+    "reason_summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "confluence_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0,
+      "maxItems": 10
+    },
+    "blocking_conditions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0,
+      "maxItems": 10
+    },
+    "validation_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 0,
+      "maxItems": 10
+    },
+    "requires_human_review": {
+      "type": "boolean"
+    }
+  }
+}

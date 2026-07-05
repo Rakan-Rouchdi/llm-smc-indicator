@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "setup_id": "CME_MINI_ES1_5_20260705T082500Z_67890",
+  "action": "NO_TRADE",
+  "bias": "NEUTRAL",
+  "confidence": 0,
+  "entry": {
+    "type": "NONE",
+    "low": null,
+    "high": null,
+    "preferred": null
+  },
+  "stop_loss": null,
+  "take_profit": {
+    "tp1": null,
+    "tp2": null
+  },
+  "risk_reward": null,
+  "expires_at": null,
+  "headline_driver": "FOMC / CPI / NFP blackout",
+  "reason_summary": "No trade because a high-impact news blackout is active.",
+  "confluence_notes": [],
+  "blocking_conditions": [
+    "High-impact news blackout active"
+  ],
+  "validation_notes": [
+    "Backend validator should force NO_TRADE during blackout."
+  ],
+  "requires_human_review": false
+}

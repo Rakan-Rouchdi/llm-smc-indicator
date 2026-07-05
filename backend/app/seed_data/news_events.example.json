@@ -1,0 +1,11 @@
+[
+  {
+    "event_id": "NFP_2026_08_07",
+    "title": "Nonfarm Payrolls",
+    "event_time": "2026-08-07T08:30:00-04:00",
+    "impact": "HIGH",
+    "symbols": ["ES", "NQ"],
+    "blackout_minutes_before": 30,
+    "blackout_minutes_after": 30
+  }
+]

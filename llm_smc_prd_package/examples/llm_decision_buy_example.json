@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "setup_id": "CME_MINI_ES1_5_20260705T134500Z_12345",
+  "action": "BUY",
+  "bias": "BULLISH",
+  "confidence": 76,
+  "entry": {
+    "type": "FVG",
+    "low": 6720.5,
+    "high": 6722.0,
+    "preferred": 6721.25
+  },
+  "stop_loss": 6714.75,
+  "take_profit": {
+    "tp1": 6734.25,
+    "tp2": null
+  },
+  "risk_reward": 2.0,
+  "expires_at": "2026-07-05T14:00:00Z",
+  "headline_driver": "None",
+  "reason_summary": "Bullish sweep, BOS, FVG retest, SMT confirmation, and strong relative volume align with no blackout.",
+  "confluence_notes": [
+    "Bullish liquidity sweep",
+    "Bullish BOS",
+    "Bullish FVG retest",
+    "Bullish SMT",
+    "Strong RVOL"
+  ],
+  "blocking_conditions": [],
+  "validation_notes": [
+    "Confidence is a setup-quality score, not a win probability."
+  ],
+  "requires_human_review": false
+}

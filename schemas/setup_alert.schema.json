@@ -1,0 +1,421 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SetupAlert",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "setup_id",
+    "source",
+    "symbol",
+    "root_symbol",
+    "companion_symbol",
+    "timeframe",
+    "bar_time",
+    "bar_index",
+    "direction",
+    "rule_score",
+    "price",
+    "entry",
+    "risk",
+    "features",
+    "session",
+    "diagnostics"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "setup_id": {
+      "type": "string",
+      "minLength": 8
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "tradingview_pine"
+      ]
+    },
+    "symbol": {
+      "type": "string"
+    },
+    "root_symbol": {
+      "type": "string",
+      "enum": [
+        "ES",
+        "NQ",
+        "UNKNOWN"
+      ]
+    },
+    "companion_symbol": {
+      "type": "string"
+    },
+    "timeframe": {
+      "type": "string"
+    },
+    "bar_time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "bar_index": {
+      "type": "integer"
+    },
+    "direction": {
+      "type": "string",
+      "enum": [
+        "BULLISH",
+        "BEARISH"
+      ]
+    },
+    "rule_score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "price": {
+      "type": "number"
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "zone_type",
+        "low",
+        "high",
+        "preferred"
+      ],
+      "properties": {
+        "zone_type": {
+          "type": "string",
+          "enum": [
+            "FVG",
+            "OB",
+            "IFVG",
+            "UNKNOWN"
+          ]
+        },
+        "low": {
+          "type": "number"
+        },
+        "high": {
+          "type": "number"
+        },
+        "preferred": {
+          "type": "number"
+        }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stop_loss",
+        "take_profit_1",
+        "risk_reward",
+        "risk_points",
+        "reward_points"
+      ],
+      "properties": {
+        "stop_loss": {
+          "type": "number"
+        },
+        "take_profit_1": {
+          "type": "number"
+        },
+        "risk_reward": {
+          "type": "number"
+        },
+        "risk_points": {
+          "type": "number"
+        },
+        "reward_points": {
+          "type": "number"
+        }
+      }
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bos",
+        "fvg",
+        "order_block",
+        "liquidity_sweep",
+        "smt",
+        "volume",
+        "consolidation",
+        "htf_bias",
+        "displacement"
+      ],
+      "properties": {
+        "bos": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "level"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "NONE",
+                "BULLISH",
+                "BEARISH"
+              ]
+            },
+            "level": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          }
+        },
+        "fvg": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "low",
+            "high",
+            "age_bars"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "NONE",
+                "BULLISH",
+                "BEARISH",
+                "MITIGATED"
+              ]
+            },
+            "low": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "high": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "age_bars": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        },
+        "order_block": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "low",
+            "high",
+            "age_bars"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "NONE",
+                "BULLISH",
+                "BEARISH"
+              ]
+            },
+            "low": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "high": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "age_bars": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        },
+        "liquidity_sweep": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "level",
+            "pool_type",
+            "age_bars"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "NONE",
+                "BULLISH",
+                "BEARISH"
+              ]
+            },
+            "level": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "pool_type": {
+              "type": "string"
+            },
+            "age_bars": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        },
+        "smt": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "state",
+            "lookback"
+          ],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "NONE",
+                "BULLISH",
+                "BEARISH"
+              ]
+            },
+            "lookback": {
+              "type": "integer"
+            }
+          }
+        },
+        "volume": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "rvol",
+            "state"
+          ],
+          "properties": {
+            "rvol": {
+              "type": "number"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "THIN",
+                "NEUTRAL",
+                "STRONG"
+              ]
+            }
+          }
+        },
+        "consolidation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "active",
+            "directional_efficiency",
+            "range_atr_multiple"
+          ],
+          "properties": {
+            "active": {
+              "type": "boolean"
+            },
+            "directional_efficiency": {
+              "type": "number"
+            },
+            "range_atr_multiple": {
+              "type": "number"
+            }
+          }
+        },
+        "htf_bias": {
+          "type": "string",
+          "enum": [
+            "BULLISH",
+            "BEARISH",
+            "NEUTRAL"
+          ]
+        },
+        "displacement": {
+          "type": "string",
+          "enum": [
+            "BULLISH",
+            "BEARISH",
+            "WEAK",
+            "NONE"
+          ]
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "current_high",
+        "current_low",
+        "completed_high",
+        "completed_low"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": [
+            "ASIA",
+            "LONDON",
+            "NY_AM",
+            "NY_PM",
+            "OFF_HOURS"
+          ]
+        },
+        "current_high": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "current_low": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "completed_high": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "completed_low": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

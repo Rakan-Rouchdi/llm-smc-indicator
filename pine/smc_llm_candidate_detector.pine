@@ -1,0 +1,6 @@
+//@version=6
+indicator("SMC LLM Candidate Detector", overlay=true)
+
+// Phase 1 placeholder only. Full SMC detection, visuals, and alert payloads are
+// deferred to the Pine implementation phase.
+plot(na, title="Phase 1 Placeholder")
