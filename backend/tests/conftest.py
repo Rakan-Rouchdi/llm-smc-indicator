@@ -22,6 +22,11 @@ def valid_buy_decision_payload() -> dict:
 
 
 @pytest.fixture
+def pine_alert_payload() -> dict:
+    return json.loads((PROJECT_ROOT / "examples" / "pine_alert_payload_example.json").read_text())
+
+
+@pytest.fixture
 def fresh_setup_payload(valid_setup_payload) -> dict:
     now = datetime.now(timezone.utc).replace(microsecond=0)
     valid_setup_payload["bar_time"] = now.isoformat().replace("+00:00", "Z")

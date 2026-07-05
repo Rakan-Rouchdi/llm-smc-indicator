@@ -95,6 +95,7 @@ Phase 3 uses `LLM_PROVIDER=mock` by default. OpenAI-compatible live routing is i
 
 - Phase 2B TradingView validation: `docs/phase2b_validation.md`
 - Phase 2C 4h validation: `docs/phase2c_4h_validation.md`
+- Phase 4A TradingView alert setup: `docs/tradingview_alert_setup.md`
 
 Screenshots remain in:
 

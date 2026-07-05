@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "setup_id": "CME_MINI_DL:ES1!_5_1783334400000_424242",
+  "source": "tradingview_pine",
+  "symbol": "CME_MINI_DL:ES1!",
+  "root_symbol": "ES",
+  "companion_symbol": "CME_MINI:NQ1!",
+  "timeframe": "5",
+  "bar_time": "2026-07-06T14:00:00Z",
+  "bar_index": 424242,
+  "direction": "BULLISH",
+  "rule_score": 75,
+  "price": 6721.25,
+  "entry": {
+    "zone_type": "FVG",
+    "low": 6720.5,
+    "high": 6722.0,
+    "preferred": 6721.25
+  },
+  "risk": {
+    "stop_loss": 6714.75,
+    "take_profit_1": 6734.25,
+    "risk_reward": 2.0,
+    "risk_points": 6.5,
+    "reward_points": 13.0
+  },
+  "features": {
+    "bos": {
+      "state": "BULLISH",
+      "level": 6720.0
+    },
+    "fvg": {
+      "state": "BULLISH",
+      "low": 6720.5,
+      "high": 6722.0,
+      "age_bars": 3
+    },
+    "order_block": {
+      "state": "NONE",
+      "low": null,
+      "high": null,
+      "age_bars": null
+    },
+    "liquidity_sweep": {
+      "state": "BULLISH",
+      "level": 6716.0,
+      "pool_type": "SESSION_LOW",
+      "age_bars": 6
+    },
+    "smt": {
+      "state": "BULLISH",
+      "lookback": 20
+    },
+    "volume": {
+      "rvol": 1.62,
+      "state": "STRONG"
+    },
+    "consolidation": {
+      "active": false,
+      "directional_efficiency": 0.48,
+      "range_atr_multiple": 2.8
+    },
+    "htf_bias": "BULLISH",
+    "displacement": "BULLISH"
+  },
+  "session": {
+    "name": "NY_AM",
+    "current_high": 6726.75,
+    "current_low": 6716.0,
+    "completed_high": 6724.0,
+    "completed_low": 6716.0
+  },
+  "diagnostics": {
+    "atr": 5.25,
+    "mintick": 0.25,
+    "bos_age_bars": 2,
+    "sweep_age_bars": 6,
+    "smt_age_bars": 4,
+    "notes": "Phase 2 Pine MVP payload"
+  }
+}
