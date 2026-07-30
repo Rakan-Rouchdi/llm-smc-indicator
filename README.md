@@ -19,23 +19,20 @@ The MVP is decision support only. It does not place trades, connect to brokers, 
 ## Run Backend Locally
 
 ```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .[dev]
-uvicorn app.main:app --reload
+export WEBHOOK_SECRET="<local-secret>"
+scripts/start_backend.sh
 ```
 
 Health check:
 
 ```bash
-curl http://localhost:8000/health
+scripts/check_backend_health.sh
 ```
 
 Dashboard:
 
 ```text
-http://localhost:8000/dashboard
+http://localhost:8003/dashboard
 ```
 
 The root route `/` also opens the dashboard.
@@ -45,15 +42,15 @@ The root route `/` also opens the dashboard.
 From the project root, with the backend running:
 
 ```bash
-backend/.venv/bin/python backend/scripts/send_sample_webhook.py
+scripts/send_sample_webhook.sh
 ```
 
 Equivalent curl:
 
 ```bash
-curl -X POST http://localhost:8000/webhook/tradingview \
+curl -X POST http://localhost:8003/webhook/tradingview \
   -H 'Content-Type: application/json' \
-  -H 'X-Webhook-Secret: change-me' \
+  -H "X-Webhook-Secret: $WEBHOOK_SECRET" \
   --data @examples/tradingview_webhook_example.json
 ```
 
@@ -96,6 +93,9 @@ Phase 3 uses `LLM_PROVIDER=mock` by default. OpenAI-compatible live routing is i
 - Phase 2B TradingView validation: `docs/phase2b_validation.md`
 - Phase 2C 4h validation: `docs/phase2c_4h_validation.md`
 - Phase 4A TradingView alert setup: `docs/tradingview_alert_setup.md`
+- Live MVP restart guide: `docs/restart_live_mvp.md`
+- Live MVP monitoring: `docs/live_mvp_monitoring.md`
+- Stable deployment options: `docs/stable_deployment_options.md`
 
 Screenshots remain in:
 
