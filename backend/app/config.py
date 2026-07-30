@@ -1,6 +1,7 @@
 from functools import lru_cache
+from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,10 +11,11 @@ class Settings(BaseSettings):
     app_port: int = 8000
     database_url: str = "sqlite:///./smc_llm.db"
     webhook_secret: str = "change-me"
-    openai_api_key: str | None = None
-    llm_provider: str = "mock"
-    llm_model: str = "gpt-4o-mini"
-    llm_timeout_seconds: int = 20
+    llm_provider: Literal["mock", "openai"] = "mock"
+    openai_api_key: SecretStr | None = None
+    openai_model: str = "gpt-4o-mini"
+    llm_timeout_seconds: float = Field(default=20, gt=0)
+    llm_max_retries: int = Field(default=2, ge=0, le=10)
     llm_confidence_approve_threshold: int = 70
     llm_confidence_watchlist_threshold: int = 55
     max_setup_age_minutes: int = 15

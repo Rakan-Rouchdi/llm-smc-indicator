@@ -33,7 +33,7 @@ export MVP_PORT=8003
 
 The helpers never print the secret. Do not add it to Pine, source files, docs,
 screenshots, or shell scripts. A gitignored `backend/.env` can be used instead;
-keep `LLM_PROVIDER=mock`.
+keep `LLM_PROVIDER=mock` unless following the controlled OpenAI procedure.
 
 ## 2. Start the Backend
 

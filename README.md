@@ -84,9 +84,37 @@ pytest
 
 Copy `backend/.env.example` to `backend/.env` for local overrides.
 
-Phase 3 uses `LLM_PROVIDER=mock` by default. OpenAI-compatible live routing is intentionally deferred.
+`LLM_PROVIDER=mock` remains the default. Phase 5B adds optional OpenAI routing
+with deterministic mock fallback.
 
 `.env`, `backend/.env`, SQLite database files, and local virtualenvs are gitignored.
+
+## Optional OpenAI Provider
+
+Mock mode remains the safe default. To prepare live OpenAI manually, copy the
+example configuration and edit the gitignored file locally:
+
+```bash
+cp backend/.env.example backend/.env
+chmod 600 backend/.env
+```
+
+Set these values in `backend/.env` without committing or sharing the key:
+
+```dotenv
+LLM_PROVIDER=openai
+OPENAI_API_KEY=<add manually>
+OPENAI_MODEL=gpt-4o-mini
+LLM_TIMEOUT_SECONDS=20
+LLM_MAX_RETRIES=2
+```
+
+If the key is absent or an OpenAI request/output fails, the workflow uses the
+deterministic mock provider. The LLM output must pass JSON Schema, Pydantic, and
+deterministic trade validation.
+
+See `docs/live_openai_integration.md` for the controlled enablement and rollback
+procedure.
 
 ## Validation Docs
 
@@ -96,6 +124,7 @@ Phase 3 uses `LLM_PROVIDER=mock` by default. OpenAI-compatible live routing is i
 - Live MVP restart guide: `docs/restart_live_mvp.md`
 - Live MVP monitoring: `docs/live_mvp_monitoring.md`
 - Stable deployment options: `docs/stable_deployment_options.md`
+- Live OpenAI integration: `docs/live_openai_integration.md`
 
 Screenshots remain in:
 

@@ -23,10 +23,9 @@ fi
 
 export APP_PORT="$PORT"
 export DATABASE_URL="${DATABASE_URL:-sqlite:///$PROJECT_ROOT/smc_llm.db}"
-export LLM_PROVIDER="mock"
 export PYTHONPATH="$PROJECT_ROOT/backend${PYTHONPATH:+:$PYTHONPATH}"
 
-echo "Starting mock-provider MVP on http://127.0.0.1:$PORT"
+echo "Starting SMC LLM MVP on http://127.0.0.1:$PORT"
 if [[ "$DATABASE_URL" == sqlite:///* ]]; then
   echo "SQLite: ${DATABASE_URL#sqlite:///}"
 else
