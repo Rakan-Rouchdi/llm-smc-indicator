@@ -68,6 +68,7 @@
             {% if latest_decision %}
               {% set llm = latest_decision.llm_decision %}
               <dl class="kv">
+                <div><dt>Model</dt><dd>{{ latest_decision.model }}</dd></div>
                 <div><dt>LLM Action</dt><dd>{{ llm.action }}</dd></div>
                 <div><dt>Final Action</dt><dd>{{ latest_decision.final_action }}</dd></div>
                 <div><dt>Confidence</dt><dd>{{ latest_decision.confidence }}</dd></div>

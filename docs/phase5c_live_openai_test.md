@@ -50,7 +50,7 @@ SQLite stored:
 `GET /decisions/latest` returned the new fallback-backed record. The local
 dashboard loaded successfully and displayed the setup and decision.
 
-## Follow-up
+## Initial Follow-up
 
 Before repeating the controlled live test, resolve the OpenAI account's
 rate-limit or quota condition. Do not enable live TradingView-to-OpenAI
@@ -61,6 +61,67 @@ identifier.
 The sample sender timeout was increased to 60 seconds because the previous
 10-second client timeout could expire while the backend was still completing
 the configured OpenAI retry window.
+
+## Retry After Adding API Credits
+
+The controlled test was repeated after API credits were added.
+
+- Backend provider configuration: `openai`
+- Configured model: `gpt-4o-mini`
+- Credential configured: yes, checked as a boolean only
+- Backend health: passed
+- Controlled payload: `examples/pine_alert_payload_example.json`
+- Endpoint: `POST /webhook/tradingview`
+- Live OpenAI provider selected and called: yes
+- Live OpenAI request succeeded: no
+- Sanitized API result: HTTP `429` (`RateLimitError`)
+- Stored model: `mock-llm-deterministic-openai-fallback`
+- Fallback decision: `BUY`
+- Confidence: `75`
+- Risk/reward: `2.0`
+- Deterministic validator: `APPROVED`
+- Dashboard: passed and displayed the latest fallback-backed decision
+
+A 60-second propagation window was allowed before one final controlled webhook
+attempt. That attempt still received HTTP `429` and used the mock fallback.
+No further retries were made.
+
+This retry did not meet the success criterion. Before another attempt, confirm
+that billing is active for the same OpenAI organization/project associated with
+the configured key and that the project has a usable spend limit. A successful
+retry must store `model: gpt-4o-mini`.
+
+## Successful Retry After Credits Became Active
+
+The controlled test was repeated again after the API credits became active.
+This run met all Phase 5C success criteria.
+
+- Backend provider configuration: `openai`
+- Model requested and stored: `gpt-4o-mini`
+- Controlled payload: `examples/pine_alert_payload_example.json`
+- Endpoint: `POST /webhook/tradingview`
+- OpenAI provider succeeded: yes
+- OpenAI decision schema: valid
+- Pydantic decision validation: passed
+- OpenAI action: `BUY`
+- Final deterministic action: `BUY`
+- Confidence: `75`
+- Risk/reward: `2.0`
+- Deterministic validator: `APPROVED`
+- Mock fallback used: no
+- SQLite setup status: `PROCESSED`
+- Parsed payload, enriched context, OpenAI decision, and validator result:
+  stored
+- `GET /decisions/latest`: returned `model: gpt-4o-mini`
+- Dashboard: displayed the setup, model, action, confidence, and validator
+  status
+
+The dashboard now renders the stored provider model in its latest-decision
+panel, making OpenAI provenance visible without inspecting SQLite.
+
+No trades were placed. TradingView alerts and Pine were not modified. The API
+key remained only in the gitignored `backend/.env` file and was not printed,
+documented, or committed.
 
 ## Safety
 

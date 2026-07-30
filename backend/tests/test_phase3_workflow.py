@@ -59,6 +59,7 @@ def test_dashboard_route_loads(client, fresh_setup_payload):
     assert response.status_code == 200
     assert "SMC LLM Dashboard" in response.text
     assert fresh_setup_payload["symbol"] in response.text
+    assert "mock-llm-deterministic" in response.text
 
     detail = client.get(f"/dashboard/setups/{fresh_setup_payload['setup_id']}")
     assert detail.status_code == 200
