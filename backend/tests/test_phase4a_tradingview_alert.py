@@ -33,3 +33,47 @@ def test_pine_style_payload_posts_to_webhook_with_query_secret(client, pine_aler
     assert body["setup"]["raw_payload"]["symbol"] == "CME_MINI_DL:ES1!"
     assert body["llm_decision"]["action"] == "BUY"
     assert body["validator"]["validator_status"] == "APPROVED"
+
+
+def test_phase4d_test_mode_payload_matches_schema(pine_alert_payload):
+    payload = _freshen_pine_payload(pine_alert_payload)
+    payload["setup_id"] = payload["setup_id"].replace("_pytest", "_TEST_pytest")
+    payload["rule_score"] = 100
+    payload["features"].update(
+        {
+            "bos": {"state": "NONE", "level": None},
+            "fvg": {
+                "state": "BULLISH",
+                "low": 6720.75,
+                "high": 6721.75,
+                "age_bars": 0,
+            },
+            "liquidity_sweep": {
+                "state": "NONE",
+                "level": None,
+                "pool_type": "NONE",
+                "age_bars": None,
+            },
+            "smt": {"state": "NONE", "lookback": 20},
+            "volume": {"rvol": 1.0, "state": "NEUTRAL"},
+            "consolidation": {
+                "active": False,
+                "directional_efficiency": 1.0,
+                "range_atr_multiple": 3.0,
+            },
+            "htf_bias": "NEUTRAL",
+            "displacement": "NONE",
+        }
+    )
+    payload["diagnostics"] = {
+        "test_mode": True,
+        "atr": 5.25,
+        "mintick": 0.25,
+        "notes": "Phase 4D webhook delivery test",
+    }
+
+    validate_setup_alert_schema(payload)
+    alert = SetupAlert.model_validate(payload)
+
+    assert alert.diagnostics["test_mode"] is True
+    assert alert.features.consolidation.active is False

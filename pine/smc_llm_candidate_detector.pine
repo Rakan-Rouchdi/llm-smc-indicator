@@ -42,14 +42,20 @@ bool showZones = input.bool(true, "Show FVG zones")
 bool showProofMarkers = input.bool(true, "Show proof markers")
 bool showProvisionalTrades = input.bool(true, "Show provisional trade levels")
 bool enableAlerts = input.bool(true, "Enable alert() JSON payloads")
+bool enableTestWebhookAlert = input.bool(false, "Enable test webhook alert", tooltip="Emits one schema-valid diagnostic payload on the next confirmed realtime bar. Disable after delivery testing.")
 
 // -----------------------------------------------------------------------------+
 // Utility helpers
 // -----------------------------------------------------------------------------+
 float tick = syminfo.mintick
+// ticker.standard() strips chart modifiers such as settlement-as-close. Using
+// raw syminfo.tickerid can inject TradingView's internal modifier descriptor
+// into JSON string fields and make an otherwise valid payload malformed.
+string alertSymbol = ticker.standard(syminfo.tickerid)
 
 f_num(float value) =>
-    na(value) ? "null" : str.tostring(value, "#.########")
+    // JSON numbers require a leading zero for values between -1 and 1.
+    na(value) ? "null" : str.tostring(value, "0.########")
 
 f_int(int value) =>
     na(value) ? "null" : str.tostring(value)
@@ -67,8 +73,8 @@ f_state_color(string value) =>
      color.new(color.silver, 0)
 
 f_root_symbol() =>
-    str.contains(syminfo.tickerid, "NQ") ? "NQ" :
-     str.contains(syminfo.tickerid, "ES") ? "ES" :
+    str.contains(alertSymbol, "NQ") ? "NQ" :
+     str.contains(alertSymbol, "ES") ? "ES" :
      "UNKNOWN"
 
 string rootSymbol = f_root_symbol()
@@ -411,6 +417,12 @@ bool selectedCandidate = chooseBull or chooseBear
 bool alreadyAlertedThisFvg = not na(alertedFvgBar) and not na(fvgBar) and alertedFvgBar == fvgBar
 bool shouldAlert = enableAlerts and selectedCandidate and not alreadyAlertedThisFvg
 
+// Test delivery is intentionally stricter than alert.freq_once_per_bar_close:
+// the latch permits one alert for the entire enabled runtime, not one per bar.
+// Toggling the input off and on starts a new runtime and rearms the latch.
+var bool testWebhookAlertSent = false
+bool shouldSendTestWebhook = enableAlerts and enableTestWebhookAlert and barstate.isrealtime and barstate.isconfirmed and not testWebhookAlertSent
+
 if selectedCandidate and showProofMarkers
     label candidateLabel = label.new(bar_index, chooseBull ? low : high, chooseBull ? "SMC BUY CANDIDATE" : "SMC SELL CANDIDATE", style=chooseBull ? label.style_label_up : label.style_label_down, textcolor=color.white, color=chooseBull ? color.new(color.green, 0) : color.new(color.red, 0))
     f_store_label(candidateLabel)
@@ -426,13 +438,13 @@ if selectedCandidate and showProvisionalTrades
 // Build and send strict setup_alert.schema.json payloads. Nullable feature fields
 // are emitted as JSON null, while active trade/risk fields are numeric.
 if shouldAlert
-    string setupId = syminfo.tickerid + "_" + timeframe.period + "_" + str.tostring(time) + "_" + str.tostring(bar_index)
+    string setupId = alertSymbol + "_" + timeframe.period + "_" + str.tostring(time) + "_" + str.tostring(bar_index)
     string barTimeIso = str.format_time(time, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC")
     string payload = "{"
     payload += "\"schema_version\":\"1.0\","
     payload += "\"setup_id\":\"" + setupId + "\","
     payload += "\"source\":\"tradingview_pine\","
-    payload += "\"symbol\":\"" + syminfo.tickerid + "\","
+    payload += "\"symbol\":\"" + alertSymbol + "\","
     payload += "\"root_symbol\":\"" + rootSymbol + "\","
     payload += "\"companion_symbol\":\"" + companionSymbol + "\","
     payload += "\"timeframe\":\"" + timeframe.period + "\","
@@ -459,6 +471,51 @@ if shouldAlert
     payload += "}"
     alert(payload, alert.freq_once_per_bar_close)
     alertedFvgBar := fvgBar
+
+// Emit a deterministic, schema-valid bullish setup solely to prove the
+// TradingView -> public tunnel -> backend delivery path. This bypasses SMC
+// candidate conditions but never bypasses backend schema or decision validation.
+if shouldSendTestWebhook
+    float testEntryLow = close - 2.0 * tick
+    float testEntryHigh = close + 2.0 * tick
+    float testEntryPreferred = close
+    float testRiskPoints = 8.0 * tick
+    float testRewardPoints = 16.0 * tick
+    float testStop = testEntryPreferred - testRiskPoints
+    float testTarget = testEntryPreferred + testRewardPoints
+    string testSetupId = alertSymbol + "_" + timeframe.period + "_TEST_" + str.tostring(time) + "_" + str.tostring(bar_index)
+    string testBarTimeIso = str.format_time(time, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC")
+    string testPayload = "{"
+    testPayload += "\"schema_version\":\"1.0\","
+    testPayload += "\"setup_id\":\"" + testSetupId + "\","
+    testPayload += "\"source\":\"tradingview_pine\","
+    testPayload += "\"symbol\":\"" + alertSymbol + "\","
+    testPayload += "\"root_symbol\":\"" + rootSymbol + "\","
+    testPayload += "\"companion_symbol\":\"" + companionSymbol + "\","
+    testPayload += "\"timeframe\":\"" + timeframe.period + "\","
+    testPayload += "\"bar_time\":\"" + testBarTimeIso + "\","
+    testPayload += "\"bar_index\":" + str.tostring(bar_index) + ","
+    testPayload += "\"direction\":\"BULLISH\","
+    testPayload += "\"rule_score\":100,"
+    testPayload += "\"price\":" + f_num(close) + ","
+    testPayload += "\"entry\":{\"zone_type\":\"FVG\",\"low\":" + f_num(testEntryLow) + ",\"high\":" + f_num(testEntryHigh) + ",\"preferred\":" + f_num(testEntryPreferred) + "},"
+    testPayload += "\"risk\":{\"stop_loss\":" + f_num(testStop) + ",\"take_profit_1\":" + f_num(testTarget) + ",\"risk_reward\":2.0,\"risk_points\":" + f_num(testRiskPoints) + ",\"reward_points\":" + f_num(testRewardPoints) + "},"
+    testPayload += "\"features\":{"
+    testPayload += "\"bos\":{\"state\":\"NONE\",\"level\":null},"
+    testPayload += "\"fvg\":{\"state\":\"BULLISH\",\"low\":" + f_num(testEntryLow) + ",\"high\":" + f_num(testEntryHigh) + ",\"age_bars\":0},"
+    testPayload += "\"order_block\":{\"state\":\"NONE\",\"low\":null,\"high\":null,\"age_bars\":null},"
+    testPayload += "\"liquidity_sweep\":{\"state\":\"NONE\",\"level\":null,\"pool_type\":\"NONE\",\"age_bars\":null},"
+    testPayload += "\"smt\":{\"state\":\"NONE\",\"lookback\":" + str.tostring(smtLookback) + "},"
+    testPayload += "\"volume\":{\"rvol\":1.0,\"state\":\"NEUTRAL\"},"
+    testPayload += "\"consolidation\":{\"active\":false,\"directional_efficiency\":1.0,\"range_atr_multiple\":3.0},"
+    testPayload += "\"htf_bias\":\"NEUTRAL\","
+    testPayload += "\"displacement\":\"NONE\""
+    testPayload += "},"
+    testPayload += "\"session\":{\"name\":\"" + sessionName + "\",\"current_high\":" + f_num(currentSessionHigh) + ",\"current_low\":" + f_num(currentSessionLow) + ",\"completed_high\":" + f_num(completedSessionHigh) + ",\"completed_low\":" + f_num(completedSessionLow) + "},"
+    testPayload += "\"diagnostics\":{\"test_mode\":true,\"atr\":" + f_num(atr) + ",\"mintick\":" + f_num(tick) + ",\"notes\":\"Phase 4D webhook delivery test\"}"
+    testPayload += "}"
+    alert(testPayload, alert.freq_once_per_bar_close)
+    testWebhookAlertSent := true
 
 // Mark FVG mitigation after candidate checks so the first retest can still alert.
 float fvgMid = (fvgLow + fvgHigh) / 2.0
