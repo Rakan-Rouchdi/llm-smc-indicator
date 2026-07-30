@@ -43,6 +43,12 @@ def main() -> int:
         action="store_true",
         help="Send the file unchanged instead of refreshing bar_time and setup_id.",
     )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=float(os.getenv("MVP_WEBHOOK_TIMEOUT_SECONDS", "60")),
+        help="Seconds to wait for the complete webhook-to-LLM workflow.",
+    )
     args = parser.parse_args()
 
     if not args.secret:
@@ -60,7 +66,7 @@ def main() -> int:
     )
 
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with urllib.request.urlopen(request, timeout=args.timeout) as response:
             body = response.read().decode("utf-8")
             print(json.dumps(json.loads(body), indent=2))
             return 0
