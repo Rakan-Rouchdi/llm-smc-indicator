@@ -37,6 +37,10 @@ http://localhost:8003/dashboard
 
 The root route `/` also opens the dashboard.
 
+For a public deployment, set `APP_ENV=production`, `DASHBOARD_USERNAME`, and
+`DASHBOARD_PASSWORD`. Production dashboard routes fail closed when credentials
+are absent or incomplete. `/health` remains public.
+
 ## Send A Sample Webhook
 
 From the project root, with the backend running:
@@ -116,6 +120,41 @@ deterministic trade validation.
 See `docs/live_openai_integration.md` for the controlled enablement and rollback
 procedure.
 
+## Railway Deployment Preparation
+
+The repository includes a root `Dockerfile` and `railway.toml`. Railway should
+build from the repository root and start the backend with:
+
+```text
+uvicorn app.main:app --app-dir /app/backend --host 0.0.0.0 --port $PORT
+```
+
+Attach one Railway volume at `/data` and configure:
+
+```dotenv
+APP_ENV=production
+DATABASE_URL=sqlite:////data/smc_llm.db
+WEBHOOK_SECRET=<private-value>
+DASHBOARD_USERNAME=<private-value>
+DASHBOARD_PASSWORD=<private-value>
+LLM_PROVIDER=openai
+OPENAI_API_KEY=<private-value>
+OPENAI_MODEL=gpt-4o-mini
+```
+
+Railway injects `PORT`. Keep one service replica while using SQLite. Do not
+place any credentials in `railway.toml`, the Dockerfile, source code, or Git.
+
+The future TradingView URL will be:
+
+```text
+https://<railway-service-domain>/webhooks/tradingview?secret=<redacted>
+```
+
+Deployment and cutover verification are documented in
+`docs/phase6b_railway_deployment_prep.md`. Phase 6B does not deploy or modify
+the existing TradingView alert.
+
 ## Validation Docs
 
 - Phase 2B TradingView validation: `docs/phase2b_validation.md`
@@ -124,6 +163,7 @@ procedure.
 - Live MVP restart guide: `docs/restart_live_mvp.md`
 - Live MVP monitoring: `docs/live_mvp_monitoring.md`
 - Stable deployment options: `docs/stable_deployment_options.md`
+- Railway deployment preparation: `docs/phase6b_railway_deployment_prep.md`
 - Live OpenAI integration: `docs/live_openai_integration.md`
 
 Screenshots remain in:

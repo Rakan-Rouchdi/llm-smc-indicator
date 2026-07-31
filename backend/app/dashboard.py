@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from app.auth import require_dashboard_auth
 from app.database import get_db
 from app.models import LLMDecisionRecord, SetupAlertRecord
 from app.workflow import get_latest_decision_record, serialize_decision, serialize_setup
@@ -36,7 +37,11 @@ def _latest_setup_for_decision(db: Session, decision: LLMDecisionRecord | None) 
 
 @router.get("/")
 @router.get("/dashboard")
-def index(request: Request, db: Annotated[Session, Depends(get_db)]):
+def index(
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+    _dashboard_auth: Annotated[None, Depends(require_dashboard_auth)],
+):
     setup_records = (
         db.query(SetupAlertRecord)
         .order_by(SetupAlertRecord.received_at.desc(), SetupAlertRecord.id.desc())
@@ -74,6 +79,7 @@ def setup_detail(
     setup_identifier: str,
     request: Request,
     db: Annotated[Session, Depends(get_db)],
+    _dashboard_auth: Annotated[None, Depends(require_dashboard_auth)],
 ):
     query = db.query(SetupAlertRecord)
     record = None

@@ -1,3 +1,4 @@
+import secrets as stdlib_secrets
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -44,7 +45,10 @@ def _authenticate(
     settings: Settings,
 ) -> None:
     provided_secret = header_secret or query_secret
-    if not provided_secret or provided_secret != settings.webhook_secret:
+    if not provided_secret or not stdlib_secrets.compare_digest(
+        provided_secret,
+        settings.webhook_secret,
+    ):
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
 
 

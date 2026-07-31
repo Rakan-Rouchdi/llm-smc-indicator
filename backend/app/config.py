@@ -1,16 +1,23 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     app_env: str = "development"
     app_host: str = "0.0.0.0"
-    app_port: int = 8000
+    app_port: int = Field(
+        default=8000,
+        validation_alias=AliasChoices("PORT", "APP_PORT"),
+        ge=1,
+        le=65535,
+    )
     database_url: str = "sqlite:///./smc_llm.db"
     webhook_secret: str = "change-me"
+    dashboard_username: str | None = None
+    dashboard_password: SecretStr | None = None
     llm_provider: Literal["mock", "openai"] = "mock"
     openai_api_key: SecretStr | None = None
     openai_model: str = "gpt-4o-mini"
@@ -31,10 +38,13 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True,
     )
 
     @field_validator(
         "openai_api_key",
+        "dashboard_username",
+        "dashboard_password",
         "notification_webhook_url",
         "telegram_bot_token",
         "telegram_chat_id",
