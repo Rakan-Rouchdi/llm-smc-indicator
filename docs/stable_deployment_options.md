@@ -23,6 +23,10 @@ while replacing the expiring quick-tunnel hostname with a stable hostname.
 Run both FastAPI and `cloudflared` as supervised macOS services, add uptime
 monitoring, and rotate the webhook secret during the cutover.
 
+The machine-readiness audit, account/domain prerequisites, guarded helper
+scripts, cutover procedure, and rollback plan are documented in
+`docs/phase6a_stable_webhook_url_plan.md`.
+
 This recommendation assumes the Mac can remain online. If unattended uptime is
 required independently of the Mac, choose **Render with managed Postgres** as
 the next simplest hosted architecture. Do not rely on Render's default
