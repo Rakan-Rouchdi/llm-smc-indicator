@@ -92,7 +92,9 @@ Phase 6C was deployed and validated on September 6, 2026:
 - The stored decision used `gpt-4o-mini`, returned `BUY` with confidence 75,
   and passed deterministic validation.
 - UptimeRobot monitor `803927270` checks `/health` every five minutes. The app
-  supports both `GET` and `HEAD` health probes.
+  supports both `GET` and `HEAD` health probes. The monitor reported `Up` after
+  the first scheduled check against the corrected deployment. Its initial 405
+  incident was caused by the previously missing `HEAD` handler and is resolved.
 - The existing TradingView alert was not changed. Cutover to Render still
   requires explicit approval and must edit the one existing alert in place.
 
