@@ -95,8 +95,11 @@ Phase 6C was deployed and validated on September 6, 2026:
   supports both `GET` and `HEAD` health probes. The monitor reported `Up` after
   the first scheduled check against the corrected deployment. Its initial 405
   incident was caused by the previously missing `HEAD` handler and is resolved.
-- The existing TradingView alert was not changed. Cutover to Render still
-  requires explicit approval and must edit the one existing alert in place.
+- After explicit approval, existing TradingView alert `5262922741` was edited
+  in place to use the stable Render webhook. Exactly one active alert remains.
+
+The completed alert cutover is documented in
+`docs/phase6c_tradingview_render_cutover.md`.
 
 Secrets and the full hosted URL are redacted. No secret was committed or
 printed. No trades were placed, no broker was connected, and replay trading was

@@ -167,8 +167,9 @@ and `OPENAI_API_KEY` through its secret environment settings. UptimeRobot can
 monitor the public `/health` route every five minutes. It does not replace
 persistent storage or provide a production availability guarantee.
 
-See `docs/phase6c_render_neon_deployment.md` for setup, validation, rollback,
-and the TradingView cutover gate.
+See `docs/phase6c_render_neon_deployment.md` for setup, validation, and rollback.
+The existing TradingView alert has been cut over in place to the stable Render
+webhook; see `docs/phase6c_tradingview_render_cutover.md`.
 
 ## Validation Docs
 
@@ -180,6 +181,7 @@ and the TradingView cutover gate.
 - Stable deployment options: `docs/stable_deployment_options.md`
 - Railway deployment preparation: `docs/phase6b_railway_deployment_prep.md`
 - Render and Neon deployment: `docs/phase6c_render_neon_deployment.md`
+- TradingView Render cutover: `docs/phase6c_tradingview_render_cutover.md`
 - Live OpenAI integration: `docs/live_openai_integration.md`
 
 Screenshots remain in:
