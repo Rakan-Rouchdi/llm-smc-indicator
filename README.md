@@ -155,6 +155,21 @@ Deployment and cutover verification are documented in
 `docs/phase6b_railway_deployment_prep.md`. Phase 6B does not deploy or modify
 the existing TradingView alert.
 
+## Render Free and Neon Deployment
+
+Phase 6C uses `render.yaml` to deploy the Dockerized FastAPI service to Render
+Free and uses Neon PostgreSQL for persistent storage. Local development remains
+on SQLite. Managed `postgres://` and `postgresql://` URLs are automatically
+configured for the bundled psycopg 3 driver.
+
+Render must receive `DATABASE_URL`, `WEBHOOK_SECRET`, dashboard credentials,
+and `OPENAI_API_KEY` through its secret environment settings. UptimeRobot can
+monitor the public `/health` route every five minutes. It does not replace
+persistent storage or provide a production availability guarantee.
+
+See `docs/phase6c_render_neon_deployment.md` for setup, validation, rollback,
+and the TradingView cutover gate.
+
 ## Validation Docs
 
 - Phase 2B TradingView validation: `docs/phase2b_validation.md`
@@ -164,6 +179,7 @@ the existing TradingView alert.
 - Live MVP monitoring: `docs/live_mvp_monitoring.md`
 - Stable deployment options: `docs/stable_deployment_options.md`
 - Railway deployment preparation: `docs/phase6b_railway_deployment_prep.md`
+- Render and Neon deployment: `docs/phase6c_render_neon_deployment.md`
 - Live OpenAI integration: `docs/live_openai_integration.md`
 
 Screenshots remain in:
