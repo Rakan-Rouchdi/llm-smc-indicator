@@ -1,8 +1,36 @@
 # Restart the Live MVP
 
-This runbook restores the local FastAPI, SQLite, Cloudflare quick-tunnel, and
-TradingView webhook path. It keeps the mock LLM, news, and Telegram providers
-active.
+The primary MVP path now runs on Render with Neon PostgreSQL. TradingView alert
+`5262922741` points to the stable Render webhook, and UptimeRobot monitors the
+public health endpoint every five minutes. Render selects the live OpenAI
+provider through environment variables while retaining the deterministic mock
+fallback. News and Telegram providers remain mocked.
+
+## Hosted MVP (Primary)
+
+Normal operation does not require the Mac backend or Cloudflare quick tunnel.
+Check these services after a deployment or incident:
+
+1. Render reports the web service as live.
+2. Public `/health` returns HTTP 200.
+3. UptimeRobot monitor `803927270` reports `Up`.
+4. The dashboard prompts for Basic Auth and loads with valid credentials.
+5. TradingView lists exactly one active SMC webhook alert, ID `5262922741`.
+6. `/decisions/latest` shows the most recently processed decision.
+
+The hosted webhook format is:
+
+```text
+https://<render-service>.onrender.com/webhooks/tradingview?secret=<redacted>
+```
+
+Render environment variables and the TradingView URL must use the same webhook
+secret. Rotate both together and never record the value in source control.
+
+## Local Fallback
+
+The remaining steps restore the local FastAPI, SQLite, and Cloudflare
+quick-tunnel path only when the hosted deployment is unavailable.
 
 ## Prerequisites
 
@@ -21,7 +49,7 @@ python3 -m venv backend/.venv
 backend/.venv/bin/pip install -e 'backend[dev]'
 ```
 
-## 1. Configure the Session
+## 1. Configure the Local Session
 
 Use the same webhook secret in the backend and TradingView alert. Generate a
 fresh secret without committing it:
@@ -76,7 +104,7 @@ curl --fail https://<active-host>/health
 open https://<active-host>/dashboard
 ```
 
-## 4. Refresh the TradingView Alert
+## 4. Switch the TradingView Alert to the Local Fallback
 
 The existing alert must point to:
 
@@ -126,3 +154,6 @@ TradingView alert must be refreshed.
 
 Never run two tunnel processes for the same alert during recovery. Confirm the
 backend, tunnel, and current alert URL as one matched set.
+
+After Render recovers, validate its health and edit the same alert back to the
+stable Render URL. Never create a second webhook alert during failover.
