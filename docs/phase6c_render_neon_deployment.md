@@ -79,3 +79,23 @@ quick-tunnel URL. Do not create a duplicate alert.
 
 This deployment remains decision support only. It does not place trades,
 connect to a broker, or use replay trading.
+
+## Deployment Result
+
+Phase 6C was deployed and validated on September 6, 2026:
+
+- Render Free is live at `https://<render-service>.onrender.com`.
+- Neon PostgreSQL retained the test setup and decision across a Render restart.
+- Public `GET /health` returned 200.
+- The dashboard returned 401 without credentials and 200 with valid Basic Auth.
+- A controlled Pine-style webhook was accepted through the public HTTPS URL.
+- The stored decision used `gpt-4o-mini`, returned `BUY` with confidence 75,
+  and passed deterministic validation.
+- UptimeRobot monitor `803927270` checks `/health` every five minutes. The app
+  supports both `GET` and `HEAD` health probes.
+- The existing TradingView alert was not changed. Cutover to Render still
+  requires explicit approval and must edit the one existing alert in place.
+
+Secrets and the full hosted URL are redacted. No secret was committed or
+printed. No trades were placed, no broker was connected, and replay trading was
+not used.

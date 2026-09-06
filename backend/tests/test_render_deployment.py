@@ -16,3 +16,10 @@ def test_legacy_postgres_url_uses_psycopg_driver() -> None:
 
 def test_sqlite_url_is_unchanged() -> None:
     assert normalize_database_url("sqlite:///./smc_llm.db") == "sqlite:///./smc_llm.db"
+
+
+def test_health_supports_head_requests(client) -> None:
+    response = client.head("/health")
+
+    assert response.status_code == 200
+    assert response.content == b""

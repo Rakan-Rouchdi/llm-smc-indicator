@@ -39,6 +39,12 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.head("/health")
+def health_head() -> None:
+    """Support monitoring services that probe health endpoints with HEAD."""
+    return None
+
+
 def _authenticate(
     header_secret: str | None,
     query_secret: str | None,
