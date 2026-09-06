@@ -3,6 +3,7 @@ services:
     name: llm-smc-indicator
     runtime: docker
     plan: free
+    branch: main
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health

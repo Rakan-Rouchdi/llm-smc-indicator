@@ -182,6 +182,7 @@ webhook; see `docs/phase6c_tradingview_render_cutover.md`.
 - Railway deployment preparation: `docs/phase6b_railway_deployment_prep.md`
 - Render and Neon deployment: `docs/phase6c_render_neon_deployment.md`
 - TradingView Render cutover: `docs/phase6c_tradingview_render_cutover.md`
+- Main branch deployment transition: `docs/phase6d_main_branch_deployment.md`
 - Live OpenAI integration: `docs/live_openai_integration.md`
 
 Screenshots remain in:
