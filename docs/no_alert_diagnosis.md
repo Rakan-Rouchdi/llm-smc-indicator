@@ -20,7 +20,7 @@ At inspection, the open NQ 4h bar had a bearish FVG retest and aligned sweep/SMT
 
 ## Remaining activation step
 
-TradingView alerts run a snapshot of the script, inputs, symbol, and timeframe from alert creation. The currently active alert still uses its old snapshot, so this Pine update does **not** change live alert behavior. After explicit user approval, replace alert `5262922741` with exactly one alert using the updated indicator and the existing protected Render webhook configuration. Verify the replacement is active and that exactly one matching alert exists. Do not reveal or commit the webhook secret. A replacement can also choose a shorter timeframe if more candidate opportunities are wanted, but this changes signal frequency and should be decided deliberately.
+This was the state at the time of diagnosis. The approved replacement was completed later on September 18; see `docs/alert_replacement_2026_09_18.md`. The new alert still uses NQ 4h. A shorter timeframe could increase candidate opportunities, but that would change signal frequency and requires a deliberate choice.
 
 No alert was created or deleted, no replay or trade tools were used, and no broker was connected.
 

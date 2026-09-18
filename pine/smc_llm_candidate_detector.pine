@@ -363,9 +363,11 @@ bgcolor(consolidationActive ? color.new(color.gray, 88) : na, title="Consolidati
 int chartSeconds = timeframe.in_seconds(timeframe.period)
 string autoHtfTimeframe = chartSeconds >= timeframe.in_seconds("D") ? timeframe.from_seconds(chartSeconds * 4) : chartSeconds >= timeframe.in_seconds("240") ? "D" : chartSeconds >= timeframe.in_seconds("60") ? "240" : "60"
 string effectiveHtfTimeframe = timeframe.in_seconds(htfTimeframe) > chartSeconds ? htfTimeframe : autoHtfTimeframe
-float htfClose = request.security(syminfo.tickerid, effectiveHtfTimeframe, close)
-float htfFast = request.security(syminfo.tickerid, effectiveHtfTimeframe, ta.ema(close, htfFastEma))
-float htfSlow = request.security(syminfo.tickerid, effectiveHtfTimeframe, ta.ema(close, htfSlowEma))
+// Use the last completed HTF candle so historical chart markers and realtime
+// alert decisions see the same bias instead of an in-progress HTF candle.
+float htfClose = request.security(syminfo.tickerid, effectiveHtfTimeframe, close[1], lookahead=barmerge.lookahead_on)
+float htfFast = request.security(syminfo.tickerid, effectiveHtfTimeframe, ta.ema(close, htfFastEma)[1], lookahead=barmerge.lookahead_on)
+float htfSlow = request.security(syminfo.tickerid, effectiveHtfTimeframe, ta.ema(close, htfSlowEma)[1], lookahead=barmerge.lookahead_on)
 string htfBias = htfClose > htfFast and htfFast > htfSlow ? "BULLISH" : htfClose < htfFast and htfFast < htfSlow ? "BEARISH" : "NEUTRAL"
 
 // -----------------------------------------------------------------------------+
