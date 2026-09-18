@@ -66,6 +66,8 @@ f_bool(bool value) =>
 f_state_color(string value) =>
     value == "BULLISH" ? color.new(color.lime, 0) :
      value == "BEARISH" ? color.new(color.red, 0) :
+     value == "PASS" ? color.new(color.lime, 0) :
+     value == "BLOCK" ? color.new(color.red, 0) :
      value == "STRONG" ? color.new(color.lime, 0) :
      value == "THIN" ? color.new(color.orange, 0) :
      value == "BLOCKING" ? color.new(color.red, 0) :
@@ -356,9 +358,14 @@ bool consolidationActive = rangeCompressed and lowEfficiency
 
 bgcolor(consolidationActive ? color.new(color.gray, 88) : na, title="Consolidation shading")
 
-float htfClose = request.security(syminfo.tickerid, htfTimeframe, close)
-float htfFast = request.security(syminfo.tickerid, htfTimeframe, ta.ema(close, htfFastEma))
-float htfSlow = request.security(syminfo.tickerid, htfTimeframe, ta.ema(close, htfSlowEma))
+// The PRD default is 60m. Escalate it on 1h/4h charts so this is always a
+// higher-timeframe filter; a user-selected timeframe above the chart wins.
+int chartSeconds = timeframe.in_seconds(timeframe.period)
+string autoHtfTimeframe = chartSeconds >= timeframe.in_seconds("D") ? timeframe.from_seconds(chartSeconds * 4) : chartSeconds >= timeframe.in_seconds("240") ? "D" : chartSeconds >= timeframe.in_seconds("60") ? "240" : "60"
+string effectiveHtfTimeframe = timeframe.in_seconds(htfTimeframe) > chartSeconds ? htfTimeframe : autoHtfTimeframe
+float htfClose = request.security(syminfo.tickerid, effectiveHtfTimeframe, close)
+float htfFast = request.security(syminfo.tickerid, effectiveHtfTimeframe, ta.ema(close, htfFastEma))
+float htfSlow = request.security(syminfo.tickerid, effectiveHtfTimeframe, ta.ema(close, htfSlowEma))
 string htfBias = htfClose > htfFast and htfFast > htfSlow ? "BULLISH" : htfClose < htfFast and htfFast < htfSlow ? "BEARISH" : "NEUTRAL"
 
 // -----------------------------------------------------------------------------+
@@ -416,6 +423,11 @@ float selectedRR = chooseBull ? bullRR : chooseBear ? bearRR : na
 bool selectedCandidate = chooseBull or chooseBear
 bool alreadyAlertedThisFvg = not na(alertedFvgBar) and not na(fvgBar) and alertedFvgBar == fvgBar
 bool shouldAlert = enableAlerts and selectedCandidate and not alreadyAlertedThisFvg
+
+// A rolling window makes the chart's recent setup frequency visible without
+// changing candidate eligibility or emitting diagnostic alerts.
+int recentFvgRetests = int(math.sum(barstate.isconfirmed and fvgTouched ? 1 : 0, 100))
+int recentCandidates = int(math.sum(selectedCandidate and not alreadyAlertedThisFvg ? 1 : 0, 100))
 
 // Test delivery is intentionally stricter than alert.freq_once_per_bar_close:
 // the latch permits one alert for the entire enabled runtime, not one per bar.
@@ -525,18 +537,24 @@ if bullFvgMitigated or bearFvgMitigated or fvgExpired
     fvgState := (bullFvgMitigated or bearFvgMitigated) ? "MITIGATED" : "NONE"
 
 // -----------------------------------------------------------------------------+
-// Diagnostic table. This is intentionally compact so MCP table extraction can
-// read all key states from the visible chart.
+// The table exposes each hard gate for the currently active FVG, including
+// near misses. Counts cover the most recent 100 bars loaded on the chart.
 // -----------------------------------------------------------------------------+
-var table diag = table.new(position.top_right, 2, 10, frame_color=color.new(color.white, 55), frame_width=1, border_width=1)
+var table diag = table.new(position.top_right, 2, 20, frame_color=color.new(color.white, 55), frame_width=1, border_width=1)
 
 f_table_row(int row, string name, string value) =>
     table.cell(diag, 0, row, name, text_color=color.white, bgcolor=color.new(color.black, 10), text_size=size.small)
     table.cell(diag, 1, row, value, text_color=f_state_color(value), bgcolor=color.new(color.black, 10), text_size=size.small)
 
 if showDiagnostics and barstate.islast
-    string fvgDisplay = fvgState == "BULLISH" ? "BULLISH" : fvgState == "BEARISH" ? "BEARISH" : fvgState == "MITIGATED" ? "MITIGATED" : "NONE"
+    // On the first retest, candidate checks run before mitigation is latched.
+    string fvgDisplay = activeBullFvg ? "BULLISH" : activeBearFvg ? "BEARISH" : fvgState == "MITIGATED" ? "MITIGATED" : "NONE"
     string consolidationDisplay = consolidationActive ? "BLOCKING" : "INACTIVE"
+    bool hasDirectionalFvg = activeBullFvg or activeBearFvg
+    bool liquidityGate = activeBullFvg ? bullSweepRecent or bullSmtRecent : activeBearFvg ? bearSweepRecent or bearSmtRecent : false
+    bool structureGate = activeBullFvg ? bullBosRecent or htfBias == "BULLISH" : activeBearFvg ? bearBosRecent or htfBias == "BEARISH" : false
+    float directionalRR = activeBullFvg ? bullRR : activeBearFvg ? bearRR : na
+    int directionalScore = activeBullFvg ? bullScore : activeBearFvg ? bearScore : 0
     f_table_row(0, "BOS", bosState)
     f_table_row(1, "FVG", fvgDisplay)
     f_table_row(2, "Sweep", sweepState)
@@ -544,6 +562,16 @@ if showDiagnostics and barstate.islast
     f_table_row(4, "RVOL", volumeState)
     f_table_row(5, "Consolidation", consolidationDisplay)
     f_table_row(6, "HTF Bias", htfBias)
-    f_table_row(7, "Session", sessionName)
-    f_table_row(8, "Candidate", candidateDirection)
-    f_table_row(9, "Rule Score", str.tostring(selectedScore))
+    f_table_row(7, "HTF TF", effectiveHtfTimeframe)
+    f_table_row(8, "Session", sessionName)
+    f_table_row(9, "FVG Active", hasDirectionalFvg ? "PASS" : "BLOCK")
+    f_table_row(10, "FVG Retest", fvgTouched ? "PASS" : "BLOCK")
+    f_table_row(11, "Sweep/SMT", liquidityGate ? "PASS" : "BLOCK")
+    f_table_row(12, "BOS/HTF", structureGate ? "PASS" : "BLOCK")
+    f_table_row(13, "Volume", volumeAllowed ? "PASS" : "BLOCK")
+    f_table_row(14, "Not Paused", not consolidationActive ? "PASS" : "BLOCK")
+    f_table_row(15, "RR", not na(directionalRR) and directionalRR >= minRR ? "PASS" : "BLOCK")
+    f_table_row(16, "Score", str.tostring(directionalScore) + "/" + str.tostring(minRuleScore))
+    f_table_row(17, "Retests/Setups 100", str.tostring(recentFvgRetests) + "/" + str.tostring(recentCandidates))
+    f_table_row(18, "Candidate", candidateDirection)
+    f_table_row(19, "Bar", barstate.isconfirmed ? "CLOSED" : "OPEN")
