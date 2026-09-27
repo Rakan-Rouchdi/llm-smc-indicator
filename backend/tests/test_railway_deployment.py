@@ -22,7 +22,7 @@ def test_dashboard_requires_authentication_when_configured(
         json=fresh_setup_payload,
         headers=WEBHOOK_HEADERS,
     )
-    assert response.status_code == 200
+    assert response.status_code == 202
 
     _set_dashboard_auth(monkeypatch)
 
@@ -89,7 +89,7 @@ def test_webhook_still_requires_its_own_secret(client, fresh_setup_payload):
         json=fresh_setup_payload,
         headers=WEBHOOK_HEADERS,
     )
-    assert authorized.status_code == 200
+    assert authorized.status_code == 202
 
 
 def test_railway_port_and_persistent_database_configuration(monkeypatch, tmp_path):

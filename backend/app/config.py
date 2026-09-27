@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     )
     database_url: str = "sqlite:///./smc_llm.db"
     webhook_secret: str = "change-me"
+    decision_worker_enabled: bool = True
     dashboard_username: str | None = None
     dashboard_password: SecretStr | None = None
     llm_provider: Literal["mock", "openai"] = "mock"

@@ -3,14 +3,16 @@ from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.config import Settings
 from app.context import build_context
 from app.llm_client import get_llm_provider
 from app.llm_prompt import PROMPT_VERSION
-from app.models import LLMDecisionRecord, OutcomeRecord, SetupAlertRecord
+from app.models import DecisionJobRecord, LLMDecisionRecord, OutcomeRecord, SetupAlertRecord
 from app.schemas import LLMTradeDecision, OutcomeUpdate, SetupAlert
 from app.validators import ValidationPolicy, ValidatorResult, validate_llm_decision
+from app.timing import setup_timing
 
 
 def _json_dumps(payload: Any) -> str:
@@ -104,6 +106,30 @@ def get_latest_decision_record(db: Session) -> LLMDecisionRecord | None:
     return db.query(LLMDecisionRecord).order_by(LLMDecisionRecord.created_at.desc(), LLMDecisionRecord.id.desc()).first()
 
 
+def accept_tradingview_alert(payload: dict[str, Any], db: Session) -> dict[str, Any]:
+    """Commit the receipt and job together before acknowledging the sender."""
+    setup = SetupAlert.model_validate(payload)
+    existing = db.query(SetupAlertRecord).filter_by(setup_id=setup.setup_id).first()
+    if existing is not None:
+        return {"status": "duplicate", "duplicate": True, "setup_id": setup.setup_id}
+    db.add(SetupAlertRecord(
+        setup_id=setup.setup_id, symbol=setup.symbol, timeframe=setup.timeframe,
+        bar_time=setup.bar_time, direction=setup.direction.value, rule_score=setup.rule_score,
+        payload_json=_json_dumps(payload), parsed_setup_json=setup.model_dump_json(),
+        status="QUEUED",
+    ))
+    db.add(DecisionJobRecord(setup_id=setup.setup_id))
+    try:
+        db.commit()
+    except IntegrityError:
+        # Concurrent TradingView retries must not enqueue a second LLM call.
+        db.rollback()
+        if db.query(SetupAlertRecord).filter_by(setup_id=setup.setup_id).first() is None:
+            raise
+        return {"status": "duplicate", "duplicate": True, "setup_id": setup.setup_id}
+    return {"status": "accepted", "duplicate": False, "setup_id": setup.setup_id}
+
+
 def process_tradingview_alert(
     payload: dict[str, Any],
     db: Session,
@@ -111,6 +137,7 @@ def process_tradingview_alert(
     *,
     current_time: datetime | None = None,
     context_override: dict[str, Any] | None = None,
+    job_token: str | None = None,
 ) -> dict[str, Any]:
     setup_alert = SetupAlert.model_validate(payload)
 
@@ -126,17 +153,16 @@ def process_tradingview_alert(
             .order_by(LLMDecisionRecord.created_at.desc(), LLMDecisionRecord.id.desc())
             .first()
         )
-        return {
-            "status": "duplicate",
-            "duplicate": True,
-            "setup": serialize_setup(existing),
-            "decision": serialize_decision(decision) if decision else None,
-        }
+        if decision is not None:
+            return {
+                "status": "duplicate", "duplicate": True,
+                "setup": serialize_setup(existing), "decision": serialize_decision(decision),
+            }
 
     decision_time = current_time or datetime.now(timezone.utc)
     context = context_override or build_context(setup_alert.root_symbol.value, current_time=decision_time)
 
-    setup_record = SetupAlertRecord(
+    setup_record = existing or SetupAlertRecord(
         setup_id=setup_alert.setup_id,
         symbol=setup_alert.symbol,
         timeframe=setup_alert.timeframe,
@@ -148,6 +174,7 @@ def process_tradingview_alert(
         enriched_context_json=_json_dumps(context),
         status="ACCEPTED",
     )
+    setup_record.enriched_context_json = _json_dumps(context)
     db.add(setup_record)
     db.flush()
 
@@ -158,6 +185,10 @@ def process_tradingview_alert(
         "context": context,
         "risk_policy": _risk_policy(settings),
     }
+    try:
+        llm_input["setup_timing"] = setup_timing(setup_alert, decision_time)
+    except (ValueError, TypeError, OverflowError):
+        llm_input["setup_timing"] = {"error": "Setup timing could not be validated"}
 
     provider = get_llm_provider(settings)
     llm_decision = provider.decide(llm_input)
@@ -166,7 +197,7 @@ def process_tradingview_alert(
         decision=llm_decision,
         context=context,
         policy=_validation_policy(settings),
-        current_time=decision_time,
+        current_time=current_time or datetime.now(timezone.utc),
     )
 
     rejection_reason = "; ".join(validator_result.rejections) if validator_result.rejections else None
@@ -191,6 +222,13 @@ def process_tradingview_alert(
     )
     db.add(decision_record)
     setup_record.status = "PROCESSED"
+    if job_token is not None:
+        updated = db.query(DecisionJobRecord).filter_by(
+            setup_id=setup_alert.setup_id, status="PROCESSING", lease_token=job_token,
+        ).update({"status": "DONE", "lease_until": None, "lease_token": None, "last_error": None})
+        if updated != 1:
+            db.rollback()
+            raise RuntimeError("Decision job lease was lost")
     db.commit()
     db.refresh(setup_record)
     db.refresh(decision_record)

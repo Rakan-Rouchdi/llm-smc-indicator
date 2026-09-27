@@ -9,7 +9,7 @@ from app.validators import (
 
 
 def _fresh_time() -> datetime:
-    return datetime(2026, 7, 5, 13, 46, tzinfo=timezone.utc)
+    return datetime(2026, 7, 5, 13, 51, tzinfo=timezone.utc)
 
 
 def test_validator_approves_valid_buy(valid_setup_payload, valid_buy_decision_payload):

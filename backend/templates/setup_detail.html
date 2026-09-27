@@ -35,6 +35,10 @@
         </article>
       </section>
 
+      {% if job and job.last_error %}
+        <p class="reason">Processing error: {{ job.last_error }}. Attempts: {{ job.attempts }}.</p>
+      {% endif %}
+
       <section class="two-column">
         <article class="panel">
           <h2>SMC Features</h2>
