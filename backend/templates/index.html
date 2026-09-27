@@ -52,6 +52,8 @@
             {% set session = latest_setup.parsed_setup.session %}
             <dl class="kv">
               <div><dt>Setup ID</dt><dd>{{ latest_setup.setup_id }}</dd></div>
+              <div><dt>Source</dt><dd>{{ "DELIVERY TEST" if latest_setup.parsed_setup.diagnostics.get("test_mode") else "CHART CANDIDATE" }}</dd></div>
+              {% if "_DL:" in latest_setup.symbol %}<div><dt>Market Data</dt><dd>DELAYED</dd></div>{% endif %}
               <div><dt>Received (UTC)</dt><dd>{{ latest_setup.received_at }}</dd></div>
               <div><dt>Processing</dt><dd>{{ latest_setup.status }}</dd></div>
               {% if processing_error %}<div><dt>Processing Error</dt><dd>{{ processing_error }}</dd></div>{% endif %}

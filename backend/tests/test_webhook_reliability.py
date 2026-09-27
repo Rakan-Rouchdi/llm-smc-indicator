@@ -163,3 +163,9 @@ def test_pending_setup_does_not_display_previous_setups_decision(client, fresh_s
     dashboard = client.get("/dashboard").text
     assert "QUEUED: no decision recorded for this setup." in dashboard
     assert "mock-llm-deterministic" not in dashboard
+
+
+def test_dashboard_labels_delivery_tests(client, fresh_setup_payload):
+    fresh_setup_payload["diagnostics"]["test_mode"] = True
+    client.post("/webhook/tradingview", json=fresh_setup_payload, headers=HEADERS)
+    assert "DELIVERY TEST" in client.get("/dashboard").text

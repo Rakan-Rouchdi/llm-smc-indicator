@@ -39,8 +39,10 @@ No Pine trading rules, alert thresholds, alert inputs or TradingView alert defin
 ## Validation
 
 - Initial suite: 46 passed.
-- Repair suite: 59 passed, including a blocked LLM with a sub-second local acknowledgement, durable receipt recovery, expired leases, bounded failure retries, duplicate suppression, timestamp regression cases and protected data routes.
+- Repair suite: 60 passed, including a blocked LLM with a sub-second local acknowledgement, durable receipt recovery, expired leases, bounded failure retries, duplicate suppression, timestamp regression cases, protected data routes and visibly labelled delivery tests.
 - Before deployment, authenticated hosted dashboard returned 200 and displayed the real September 24 setup. A duplicate delivery probe returned 200/duplicate in 0.699 seconds and did not create a new decision.
+- The saved TradingView alert's HTTPS host, endpoint path and secret matched the backend. Secret equality was checked using a private fingerprint comparison; no credential value was displayed. The alert was inspected and cancelled without saving changes.
+- UptimeRobot's authenticated monitor page and monitor list returned an unexpected-error screen. Its historical uptime could not be verified. Render runtime logs did show continuing `HEAD /health` requests in addition to Render's own health checks.
 - Hosted repair verification is recorded below after deployment.
 
 Full hosted URLs, webhook secrets and dashboard credentials are intentionally omitted.

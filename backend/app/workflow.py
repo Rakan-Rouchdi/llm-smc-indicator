@@ -176,7 +176,6 @@ def process_tradingview_alert(
     )
     setup_record.enriched_context_json = _json_dumps(context)
     db.add(setup_record)
-    db.flush()
 
     llm_input = {
         "schema_version": "1.0",
