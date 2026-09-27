@@ -43,6 +43,19 @@ No Pine trading rules, alert thresholds, alert inputs or TradingView alert defin
 - Before deployment, authenticated hosted dashboard returned 200 and displayed the real September 24 setup. A duplicate delivery probe returned 200/duplicate in 0.699 seconds and did not create a new decision.
 - The saved TradingView alert's HTTPS host, endpoint path and secret matched the backend. Secret equality was checked using a private fingerprint comparison; no credential value was displayed. The alert was inspected and cancelled without saving changes.
 - UptimeRobot's authenticated monitor page and monitor list returned an unexpected-error screen. Its historical uptime could not be verified. Render runtime logs did show continuing `HEAD /health` requests in addition to Render's own health checks.
-- Hosted repair verification is recorded below after deployment.
+
+## Hosted repair verification
+
+PR #3 was merged as `5132f8c` and deployed through Render's existing `main` auto-deploy workflow on September 27. The live API reports version 0.4.0. No hosting plan or auto-deploy setting was changed.
+
+- Public `/health`: 200. Protected `/dashboard`, `/setups` and `/decisions/latest`: 401 without credentials; authenticated dashboard: 200.
+- Controlled Pine-style test `delivery_audit_20260927_1790506687`: HTTP 202 in **1.191 seconds**. Job completed once, model `gpt-4o-mini`, `BUY`, validator `APPROVED`. Repeating the same request returned 200/duplicate with one decision and one job attempt.
+- Controlled legacy-v13 NQ 4h test `delivery_audit_legacy4h_20260927_1790506758`: HTTP 202 in **1.048 seconds**. The fixture used historical chart features with a synthetic timestamp and `diagnostics.test_mode=true`; it was not a natural market signal. Its setup age was correctly computed as 10.0556 minutes from close. The model was `gpt-4o-mini`; strict output schema validation passed. Final action was `NO_TRADE` because confidence was below the approval threshold. There was no false stale rejection and no mock fallback.
+- `/status` reported database OK, worker alive, two DONE jobs and no failed jobs. Both setups, enriched contexts, LLM decisions and validator results were available through the protected setup API.
+- Dashboard displayed the latest controlled setup and explicitly labelled it `DELIVERY TEST`, with received/decision timestamps. The original September 24 natural record and decision remain unchanged in history.
+- Render's new application logs showed `POST /webhooks/tradingview HTTP/1.1` with 202/200 and no query string. The active webhook secret was absent from the inspected log output.
+- These are warm-service measurements through the same public endpoint. They do not guarantee cold-start latency. No new natural TradingView alert fired during this Sunday audit, and no TradingView alert was created, deleted or changed.
+
+The browser had been opened to the local `backend/templates/index.html` file. That is a Jinja template, not the running dashboard. Use the authenticated hosted `/dashboard` route to see live records.
 
 Full hosted URLs, webhook secrets and dashboard credentials are intentionally omitted.
