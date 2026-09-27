@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.auth import require_dashboard_auth
 from app.database import get_db
-from app.models import LLMDecisionRecord, SetupAlertRecord
-from app.workflow import get_latest_decision_record, serialize_decision, serialize_setup
+from app.models import DecisionJobRecord, LLMDecisionRecord, SetupAlertRecord
+from app.workflow import serialize_decision, serialize_setup
 
 router = APIRouter()
 
@@ -20,19 +20,6 @@ def _pretty(payload: Any) -> str:
     if payload is None:
         return "{}"
     return json.dumps(payload, indent=2, default=str)
-
-
-def _latest_setup_for_decision(db: Session, decision: LLMDecisionRecord | None) -> SetupAlertRecord | None:
-    if decision is not None:
-        record = (
-            db.query(SetupAlertRecord)
-            .filter(SetupAlertRecord.setup_id == decision.setup_id)
-            .one_or_none()
-        )
-        if record is not None:
-            return record
-
-    return db.query(SetupAlertRecord).order_by(SetupAlertRecord.received_at.desc(), SetupAlertRecord.id.desc()).first()
 
 
 @router.get("/")
@@ -48,8 +35,10 @@ def index(
         .limit(25)
         .all()
     )
-    decision = get_latest_decision_record(db)
-    setup = _latest_setup_for_decision(db, decision)
+    setup = setup_records[0] if setup_records else None
+    decision = (db.query(LLMDecisionRecord).filter_by(setup_id=setup.setup_id)
+                .order_by(LLMDecisionRecord.created_at.desc(), LLMDecisionRecord.id.desc()).first()) if setup else None
+    job = db.get(DecisionJobRecord, setup.setup_id) if setup else None
 
     serialized_setup = serialize_setup(setup) if setup is not None else None
     serialized_decision = serialize_decision(decision) if decision is not None else None
@@ -63,6 +52,7 @@ def index(
             "request": request,
             "latest_setup": serialized_setup,
             "latest_decision": serialized_decision,
+            "processing_error": job.last_error if job else None,
             "news_context": context.get("news") if isinstance(context, dict) else None,
             "telegram_context": context.get("telegram") if isinstance(context, dict) else None,
             "setup_history": [serialize_setup(record) for record in setup_records],
@@ -107,6 +97,7 @@ def setup_detail(
             "request": request,
             "setup": serialized_setup,
             "decisions": serialized_decisions,
+            "job": db.get(DecisionJobRecord, record.setup_id),
             "news_context": context.get("news") if isinstance(context, dict) else None,
             "telegram_context": context.get("telegram") if isinstance(context, dict) else None,
             "raw_payload_json": _pretty(serialized_setup.get("raw_payload")),

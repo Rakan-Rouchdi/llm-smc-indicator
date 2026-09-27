@@ -7,14 +7,20 @@ The MVP is decision support only. It does not place trades, connect to brokers, 
 ## Current Scope
 
 - Pine indicator implemented and validated through TradingView MCP for ES/NQ on 5m, 15m, 1h, and 4h.
-- FastAPI backend receives TradingView-style setup alerts.
+- FastAPI commits TradingView alert receipts and durable decision jobs, returning HTTP 202 before LLM processing.
 - Incoming webhook JSON is validated against `schemas/setup_alert.schema.json`.
 - Pydantic models parse setup alerts and LLM decisions.
 - Mock news and Telegram context are added.
-- Mock deterministic LLM provider returns strict JSON.
+- Configurable OpenAI provider with deterministic mock fallback returns strict JSON.
 - Deterministic validator approves or converts decisions to `NO_TRADE`.
-- SQLite stores setups, context, decisions, validator results, and outcome placeholders.
+- SQLite locally and PostgreSQL on Neon store setups, jobs, context, decisions, validator results, and outcome placeholders.
 - Local dashboard displays latest setup, history, context, decision, validation, and raw payloads.
+
+## Webhook Reliability
+
+TradingView cancels requests that take longer than three seconds. Webhooks now return a receipt acknowledgement, not the LLM result. The in-process worker consumes persisted jobs and records the result separately. Check the authenticated `/setups/{setup_id}`, `/decisions/latest`, `/status`, and `/dashboard` routes after receipt. Dashboard credentials also protect data APIs and outcome updates; `/health` remains public and checks process liveness only.
+
+Pine's `bar_time` is the candle opening time. The backend measures setup age from its close for the supported minute resolutions. The September 2026 incident and remaining free-hosting limitations are documented in `docs/webhook_delivery_audit_2026_09_27.md`. A green uptime check alone does not establish working alert delivery.
 
 ## Run Backend Locally
 

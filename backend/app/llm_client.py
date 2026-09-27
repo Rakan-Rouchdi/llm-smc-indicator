@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -11,6 +11,7 @@ from openai import OpenAI, OpenAIError
 from pydantic import ValidationError as PydanticValidationError
 
 from app.config import Settings
+from app.timing import setup_timing
 from app.schema_validation import validate_llm_trade_decision_schema
 from app.schemas import (
     Bias,
@@ -100,6 +101,12 @@ class MockLLMProvider:
         bias = Bias.BULLISH if action == TradeAction.BUY else Bias.BEARISH
         confidence = max(70, min(85, setup.rule_score))
 
+        try:
+            close_time = datetime.fromisoformat(str(setup_timing(setup, datetime.now(timezone.utc))["bar_close_time"]))
+            expires_at = close_time + timedelta(minutes=15)
+        except (ValueError, TypeError, OverflowError):
+            expires_at = None
+
         return LLMTradeDecision(
             schema_version="1.0",
             setup_id=setup.setup_id,
@@ -117,7 +124,7 @@ class MockLLMProvider:
             stop_loss=setup.risk.stop_loss,
             take_profit=TakeProfit(tp1=setup.risk.take_profit_1, tp2=None),
             risk_reward=setup.risk.risk_reward,
-            expires_at=setup.bar_time + timedelta(minutes=15),
+            expires_at=expires_at,
             headline_driver=news.get("headline_summary") or "None",
             reason_summary=(
                 "Mock provider mirrored the structured setup into a "

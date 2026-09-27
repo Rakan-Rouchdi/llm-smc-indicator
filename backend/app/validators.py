@@ -5,6 +5,7 @@ from typing import Any, Literal
 from pydantic import ValidationError
 
 from app.schemas import Direction, LLMTradeDecision, SetupAlert, TradeAction
+from app.timing import setup_timing
 
 
 ValidatorStatus = Literal["APPROVED", "REJECTED"]
@@ -112,9 +113,14 @@ def validate_llm_decision(
         rejections.append("Setup is blocked during consolidation")
 
     if current_time is not None:
-        setup_age_minutes = (current_time - setup_alert.bar_time).total_seconds() / 60
-        if setup_age_minutes > policy.max_setup_age_minutes:
-            rejections.append("Setup is stale")
+        try:
+            timing = setup_timing(setup_alert, current_time)
+            if timing["age_minutes"] < -1:
+                rejections.append("Setup candle has not closed or its timestamp is inconsistent")
+            elif timing["age_minutes"] > policy.max_setup_age_minutes:
+                rejections.append("Setup is stale")
+        except (ValueError, TypeError, OverflowError):
+            rejections.append("Setup timing could not be validated")
 
     if llm_decision.action == TradeAction.NO_TRADE:
         rejections.append("LLM chose NO_TRADE")

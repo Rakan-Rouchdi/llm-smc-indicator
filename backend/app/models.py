@@ -51,6 +51,18 @@ class LLMDecisionRecord(Base):
     validation_rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class DecisionJobRecord(Base):
+    __tablename__ = "decision_jobs"
+
+    setup_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    status: Mapped[str] = mapped_column(String(30), default="QUEUED", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+
 class NewsEventRecord(Base):
     __tablename__ = "news_events"
 

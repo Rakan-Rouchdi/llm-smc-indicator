@@ -14,6 +14,7 @@
           <p>Mock-context webhook decisions</p>
         </div>
         <a class="button" href="/health">Health</a>
+        <a class="button" href="/status">Processing Status</a>
       </header>
 
       {% if latest_setup %}
@@ -51,7 +52,12 @@
             {% set session = latest_setup.parsed_setup.session %}
             <dl class="kv">
               <div><dt>Setup ID</dt><dd>{{ latest_setup.setup_id }}</dd></div>
-              <div><dt>Bar Time</dt><dd>{{ latest_setup.bar_time }}</dd></div>
+              <div><dt>Source</dt><dd>{{ "DELIVERY TEST" if latest_setup.parsed_setup.diagnostics.get("test_mode") else "CHART CANDIDATE" }}</dd></div>
+              {% if "_DL:" in latest_setup.symbol %}<div><dt>Market Data</dt><dd>DELAYED</dd></div>{% endif %}
+              <div><dt>Received (UTC)</dt><dd>{{ latest_setup.received_at }}</dd></div>
+              <div><dt>Processing</dt><dd>{{ latest_setup.status }}</dd></div>
+              {% if processing_error %}<div><dt>Processing Error</dt><dd>{{ processing_error }}</dd></div>{% endif %}
+              <div><dt>Bar Open (UTC)</dt><dd>{{ latest_setup.bar_time }}</dd></div>
               <div><dt>Session</dt><dd>{{ session.name }}</dd></div>
               <div><dt>BOS</dt><dd>{{ features.bos.state }}</dd></div>
               <div><dt>FVG</dt><dd>{{ features.fvg.state }}</dd></div>
@@ -69,6 +75,7 @@
               {% set llm = latest_decision.llm_decision %}
               <dl class="kv">
                 <div><dt>Model</dt><dd>{{ latest_decision.model }}</dd></div>
+                <div><dt>Decided (UTC)</dt><dd>{{ latest_decision.created_at }}</dd></div>
                 <div><dt>LLM Action</dt><dd>{{ llm.action }}</dd></div>
                 <div><dt>Final Action</dt><dd>{{ latest_decision.final_action }}</dd></div>
                 <div><dt>Confidence</dt><dd>{{ latest_decision.confidence }}</dd></div>
@@ -80,7 +87,7 @@
               </dl>
               <p class="reason">{{ latest_decision.reason_summary }}</p>
             {% else %}
-              <p class="empty">No decision recorded.</p>
+              <p class="empty">{{ latest_setup.status }}: no decision recorded for this setup.</p>
             {% endif %}
           </article>
         </section>

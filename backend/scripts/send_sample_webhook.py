@@ -4,7 +4,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -20,10 +20,15 @@ def prepare_payload(
     payload = json.loads(payload_path.read_text())
     if not preserve_payload:
         current_time = now or datetime.now(timezone.utc)
-        timestamp = current_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        minutes = {"5": 5, "15": 15, "60": 60, "240": 240}.get(payload["timeframe"])
+        if minutes is None:
+            raise ValueError("Sample timeframe is not supported")
+        timestamp = (current_time - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
         unique_suffix = int(current_time.timestamp() * 1000)
         payload["bar_time"] = timestamp
         payload["setup_id"] = f"{payload['setup_id']}_manual_{unique_suffix}"
+        payload["diagnostics"]["test_mode"] = True
+        payload["diagnostics"]["bar_close_time"] = current_time.strftime("%Y-%m-%dT%H:%M:%SZ")
     return json.dumps(payload).encode("utf-8")
 
 
@@ -46,8 +51,8 @@ def main() -> int:
     parser.add_argument(
         "--timeout",
         type=float,
-        default=float(os.getenv("MVP_WEBHOOK_TIMEOUT_SECONDS", "60")),
-        help="Seconds to wait for the complete webhook-to-LLM workflow.",
+        default=float(os.getenv("MVP_WEBHOOK_TIMEOUT_SECONDS", "3")),
+        help="Seconds to wait for the durable receipt acknowledgement (LLM runs later).",
     )
     args = parser.parse_args()
 

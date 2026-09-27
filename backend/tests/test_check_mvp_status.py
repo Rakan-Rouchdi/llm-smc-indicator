@@ -69,10 +69,12 @@ def test_collect_status_requires_all_checks(tmp_path):
 
 def test_prepare_payload_refreshes_time_and_setup_id(tmp_path):
     payload_path = tmp_path / "payload.json"
-    payload_path.write_text('{"setup_id": "setup-test", "bar_time": "old"}')
+    payload_path.write_text('{"setup_id": "setup-test", "bar_time": "old", "timeframe": "240", "diagnostics": {}}')
     now = datetime(2026, 7, 30, 17, 0, tzinfo=timezone.utc)
 
     payload = prepare_payload(payload_path, now=now)
 
-    assert b'"bar_time": "2026-07-30T17:00:00Z"' in payload
+    assert b'"bar_time": "2026-07-30T13:00:00Z"' in payload
+    assert b'"bar_close_time": "2026-07-30T17:00:00Z"' in payload
+    assert b'"test_mode": true' in payload
     assert b'"setup_id": "setup-test_manual_1785430800000"' in payload

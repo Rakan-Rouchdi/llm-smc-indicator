@@ -1,6 +1,6 @@
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -29,7 +29,7 @@ def pine_alert_payload() -> dict:
 @pytest.fixture
 def fresh_setup_payload(valid_setup_payload) -> dict:
     now = datetime.now(timezone.utc).replace(microsecond=0)
-    valid_setup_payload["bar_time"] = now.isoformat().replace("+00:00", "Z")
+    valid_setup_payload["bar_time"] = (now - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
     valid_setup_payload["setup_id"] = f"CME_MINI_ES1_5_{now.strftime('%Y%m%dT%H%M%SZ')}_pytest"
     return valid_setup_payload
 
@@ -40,6 +40,10 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("WEBHOOK_SECRET", "test-secret")
     monkeypatch.setenv("LLM_PROVIDER", "mock")
+    monkeypatch.setenv("DECISION_WORKER_ENABLED", "false")
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("DASHBOARD_USERNAME", "")
+    monkeypatch.setenv("DASHBOARD_PASSWORD", "")
     monkeypatch.setenv("MAX_SETUP_AGE_MINUTES", "60")
 
     from app.config import get_settings

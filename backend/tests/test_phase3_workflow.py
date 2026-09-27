@@ -1,23 +1,29 @@
 from copy import deepcopy
+from app.config import get_settings
+from app.worker import DecisionWorker
 
 
 WEBHOOK_HEADERS = {"X-Webhook-Secret": "test-secret"}
 
 
 def _post_webhook(client, payload):
-    return client.post("/webhook/tradingview", json=payload, headers=WEBHOOK_HEADERS)
+    response = client.post("/webhook/tradingview", json=payload, headers=WEBHOOK_HEADERS)
+    if response.status_code == 202:
+        assert DecisionWorker(get_settings()).run_once()
+    return response
 
 
 def test_full_valid_webhook_to_decision_flow(client, fresh_setup_payload):
     response = _post_webhook(client, fresh_setup_payload)
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     body = response.json()
-    assert body["status"] == "processed"
-    assert body["setup"]["setup_id"] == fresh_setup_payload["setup_id"]
-    assert body["llm_decision"]["action"] == "BUY"
-    assert body["validator"]["validator_status"] == "APPROVED"
-    assert body["final_decision"]["action"] == "BUY"
+    assert body["status"] == "accepted"
+    assert body["setup_id"] == fresh_setup_payload["setup_id"]
+    decision = client.get("/decisions/latest").json()["decision"]
+    assert decision["llm_decision"]["action"] == "BUY"
+    assert decision["validator_status"] == "APPROVED"
+    assert decision["final_action"] == "BUY"
 
 
 def test_invalid_webhook_rejection(client, fresh_setup_payload):
@@ -101,11 +107,11 @@ def test_news_blackout_converts_trade_to_no_trade(client, fresh_setup_payload, m
 
     response = _post_webhook(client, fresh_setup_payload)
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["final_decision"]["action"] == "NO_TRADE"
-    assert body["validator"]["validator_status"] == "REJECTED"
-    assert "News blackout active" in body["validator"]["rejections"]
+    assert response.status_code == 202
+    decision = client.get("/decisions/latest").json()["decision"]
+    assert decision["final_action"] == "NO_TRADE"
+    assert decision["validator_status"] == "REJECTED"
+    assert "News blackout active" in decision["validator_result"]["rejections"]
 
 
 def test_consolidation_converts_trade_to_no_trade(client, fresh_setup_payload):
@@ -114,16 +120,16 @@ def test_consolidation_converts_trade_to_no_trade(client, fresh_setup_payload):
 
     response = _post_webhook(client, payload)
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["final_decision"]["action"] == "NO_TRADE"
-    assert body["validator"]["validator_status"] == "REJECTED"
-    assert "Setup is blocked during consolidation" in body["validator"]["rejections"]
+    assert response.status_code == 202
+    decision = client.get("/decisions/latest").json()["decision"]
+    assert decision["final_action"] == "NO_TRADE"
+    assert decision["validator_status"] == "REJECTED"
+    assert "Setup is blocked during consolidation" in decision["validator_result"]["rejections"]
 
 
 def test_webhook_alias_and_outcome_endpoint(client, fresh_setup_payload):
     response = client.post("/webhooks/tradingview", json=fresh_setup_payload, headers=WEBHOOK_HEADERS)
-    assert response.status_code == 200
+    assert response.status_code == 202
 
     outcome = client.post(
         f"/setups/{fresh_setup_payload['setup_id']}/outcome",
