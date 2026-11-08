@@ -9,6 +9,7 @@ from app.worker import DecisionWorker
 def _freshen_pine_payload(payload: dict) -> dict:
     now = datetime.now(timezone.utc).replace(microsecond=0)
     payload["bar_time"] = (now - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    payload["diagnostics"]["bar_close_time"] = now.isoformat()
     payload["setup_id"] = f"CME_MINI_DL:ES1!_5_{int(now.timestamp() * 1000)}_pytest"
     return payload
 

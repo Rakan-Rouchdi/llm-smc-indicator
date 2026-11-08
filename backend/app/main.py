@@ -1,4 +1,6 @@
 import secrets as stdlib_secrets
+import time
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any
@@ -8,7 +10,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 from pydantic import ValidationError
-from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
@@ -16,9 +17,11 @@ from app.config import Settings, get_settings
 from app.auth import require_dashboard_auth
 from app.dashboard import router as dashboard_router
 from app.database import get_db, init_db
-from app.models import DecisionJobRecord, LLMDecisionRecord, SetupAlertRecord
+from app.models import DecisionJobRecord, LLMDecisionRecord, SetupAlertRecord, AlertObservationRecord, NotificationRecord
+from app.monitoring import ReceiptTimingMiddleware, operational_status
+from app.news import replace_calendar, calendar_context
 from app.logging_config import protect_access_logs
-from app.schemas import SetupAlert
+from app.schemas import SetupAlert, CalendarUpdate, AlertObservation
 from app.worker import DecisionWorker
 from app.schema_validation import format_schema_error, validate_setup_alert_schema
 from app.schemas import OutcomeUpdate
@@ -48,7 +51,8 @@ async def lifespan(app: FastAPI):
             await run_in_threadpool(worker.stop)
 
 
-app = FastAPI(title="SMC LLM Trade Setup Validator", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="SMC LLM Trade Setup Validator", version="0.5.0", lifespan=lifespan)
+app.add_middleware(ReceiptTimingMiddleware)
 app.mount("/static", StaticFiles(directory=str(BACKEND_ROOT / "static")), name="static")
 app.include_router(dashboard_router)
 
@@ -156,16 +160,36 @@ def _job_status(job: DecisionJobRecord | None) -> dict[str, object] | None:
 
 @app.get("/status", dependencies=[Depends(require_dashboard_auth)])
 def system_status(request: Request, db: Annotated[Session, Depends(get_db)]) -> dict[str, object]:
-    db.execute(text("SELECT 1"))
     worker = getattr(request.app.state, "decision_worker", None)
-    counts = dict(db.execute(select(DecisionJobRecord.status, func.count()).group_by(DecisionJobRecord.status)).all())
-    latest = get_latest_decision_record(db)
-    return {
-        "database": "ok", "worker_alive": bool(worker and worker.thread.is_alive()),
-        "jobs": counts,
-        "latest_decision": {"setup_id": latest.setup_id, "model": latest.model,
-                            "created_at": latest.created_at.isoformat()} if latest else None,
-    }
+    return operational_status(db, get_settings(), worker)
+
+
+@app.put("/context/news-calendar", dependencies=[Depends(require_dashboard_auth)])
+def put_calendar(payload: CalendarUpdate, db: Annotated[Session, Depends(get_db)]):
+    try:
+        replace_calendar(db, payload, datetime.now(timezone.utc))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"status": "recorded", "events": len(payload.events)}
+
+
+@app.get("/context/news-calendar", dependencies=[Depends(require_dashboard_auth)])
+def get_calendar(db: Annotated[Session, Depends(get_db)]):
+    return {symbol: calendar_context(db, symbol, datetime.now(timezone.utc), get_settings()) for symbol in ("ES", "NQ")}
+
+
+@app.put("/monitoring/alert", dependencies=[Depends(require_dashboard_auth)])
+def observe_alert(payload: AlertObservation, db: Annotated[Session, Depends(get_db)]):
+    db.merge(AlertObservationRecord(id=1, **payload.model_dump(), observed_at=datetime.now(timezone.utc)))
+    db.commit()
+    return {"status": "recorded", "note": "Observation only; TradingView was not changed"}
+
+
+@app.get("/notifications", dependencies=[Depends(require_dashboard_auth)])
+def notification_status(db: Annotated[Session, Depends(get_db)]):
+    rows = db.query(NotificationRecord).order_by(NotificationRecord.id.desc()).limit(100).all()
+    return {"notifications": [{"id": r.id, "decision_id": r.decision_id, "status": r.status,
+                                "attempts": r.attempts, "last_error": r.last_error} for r in rows]}
 
 
 @app.post("/webhook/tradingview")
@@ -179,6 +203,7 @@ async def tradingview_webhook(
 ) -> JSONResponse:
     _authenticate(x_webhook_secret, secret, settings)
 
+    started = time.perf_counter()
     payload = await _read_json_object(request)
     try:
         validate_setup_alert_schema(payload)
@@ -188,7 +213,9 @@ async def tradingview_webhook(
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail="Setup payload failed model validation") from exc
 
-    acknowledgement = await run_in_threadpool(accept_tradingview_alert, payload, db)
+    metrics = request.scope.get("receipt_timings", {})
+    metrics["validation_ms"] = round((time.perf_counter() - started) * 1000, 2)
+    acknowledgement = await run_in_threadpool(accept_tradingview_alert, payload, db, metrics)
     worker = getattr(request.app.state, "decision_worker", None)
     if worker is not None:
         worker.notify()

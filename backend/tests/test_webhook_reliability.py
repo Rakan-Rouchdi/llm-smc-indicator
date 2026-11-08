@@ -105,6 +105,8 @@ def test_worker_failure_is_bounded_and_visible_without_secret_details(client, fr
 def test_freshness_is_measured_from_bar_close(minutes, valid_setup_payload, valid_buy_decision_payload):
     opened = datetime(2026, 9, 24, 14, tzinfo=timezone.utc)
     valid_setup_payload.update(timeframe=str(minutes), bar_time=opened.isoformat())
+    valid_setup_payload["diagnostics"]["bar_close_time"] = (opened + timedelta(minutes=minutes)).isoformat()
+    valid_buy_decision_payload["expires_at"] = (opened + timedelta(minutes=minutes + 15)).isoformat()
     setup = SetupAlert.model_validate(valid_setup_payload)
     decision = LLMTradeDecision.model_validate(valid_buy_decision_payload)
     now = opened + timedelta(minutes=minutes + 10)
@@ -117,6 +119,7 @@ def test_freshness_is_measured_from_bar_close(minutes, valid_setup_payload, vali
 
 def test_future_or_unknown_close_cannot_bypass_freshness(valid_setup_payload, valid_buy_decision_payload):
     valid_setup_payload.update(timeframe="240", bar_time="2026-09-24T14:00:00Z")
+    valid_setup_payload["diagnostics"]["bar_close_time"] = "2026-09-24T18:00:00Z"
     setup = SetupAlert.model_validate(valid_setup_payload)
     decision = LLMTradeDecision.model_validate(valid_buy_decision_payload)
     before_close = datetime(2026, 9, 24, 17, tzinfo=timezone.utc)

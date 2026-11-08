@@ -16,6 +16,8 @@ class MockNewsAdapter:
     def build_context(self, symbol: str, current_time: datetime | None = None) -> dict[str, Any]:
         now = current_time or datetime.now(timezone.utc)
         return {
+            "provider": "mock",
+            "status": "UNVERIFIED",
             "blackout_active": False,
             "headline_summary": "Mock news context; no live news integration configured.",
             "market_bias": "NEUTRAL",
@@ -40,7 +42,17 @@ class MockTelegramAdapter:
 
 
 def build_context(symbol: str, current_time: datetime | None = None) -> dict[str, Any]:
-    news = MockNewsAdapter().build_context(symbol, current_time=current_time)
+    from app.config import get_settings
+    from app.database import SessionLocal
+    from app.news import calendar_context
+
+    settings = get_settings()
+    now = current_time or datetime.now(timezone.utc)
+    if settings.news_provider == "manual":
+        with SessionLocal() as db:
+            news = calendar_context(db, symbol, now, settings)
+    else:
+        news = MockNewsAdapter().build_context(symbol, current_time=now)
     telegram = MockTelegramAdapter().latest_summary()
     return {
         "symbol": symbol,

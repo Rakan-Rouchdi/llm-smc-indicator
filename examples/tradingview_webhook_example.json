@@ -9,7 +9,7 @@
   "bar_time": "2026-07-05T13:45:00Z",
   "bar_index": 12345,
   "direction": "BULLISH",
-  "rule_score": 80,
+  "rule_score": 100,
   "price": 6721.25,
   "entry": {
     "zone_type": "FVG",
@@ -71,6 +71,14 @@
     "completed_low": 6716.0
   },
   "diagnostics": {
+    "policy_version": "strict_v1",
+    "bar_close_time": "2026-07-05T13:50:00Z",
+    "bos_age_bars": 4,
+    "smt_age_bars": 5,
+    "fvg_retested": true,
+    "zone_invalidated": false,
+    "companion_aligned": true,
+    "consolidation_clear_bars": 2,
     "atr": 5.25,
     "mintick": 0.25,
     "notes": "Example payload"

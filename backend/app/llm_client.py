@@ -142,6 +142,15 @@ class MockLLMProvider:
         )
 
 
+def no_trade_decision(setup_id: str, reasons: list[str]) -> LLMTradeDecision:
+    return LLMTradeDecision(schema_version="1.0", setup_id=setup_id, action=TradeAction.NO_TRADE,
+        bias=Bias.NEUTRAL, confidence=0,
+        entry=DecisionEntry(type=DecisionEntryType.NONE, low=None, high=None, preferred=None),
+        stop_loss=None, take_profit=TakeProfit(tp1=None, tp2=None), risk_reward=None, expires_at=None,
+        headline_driver="None", reason_summary="; ".join(reasons)[:500],
+        confluence_notes=[], blocking_conditions=reasons[:10], validation_notes=[], requires_human_review=True)
+
+
 def _remove_unsupported_schema_keywords(value: Any) -> Any:
     if isinstance(value, dict):
         return {
