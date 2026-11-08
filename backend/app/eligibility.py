@@ -1,5 +1,7 @@
 """Versioned consistency checks for Pine facts, not independent market-data verification."""
 
+import re
+
 from app.schemas import SetupAlert
 
 POLICY_VERSION = "strict_v1"
@@ -21,6 +23,9 @@ def confirmation_score(setup: SetupAlert) -> int:
 def setup_rejections(setup: SetupAlert, minimum: int = 75, max_bars: int = 6) -> list[str]:
     f, d, direction = setup.features, setup.diagnostics, setup.direction.value
     errors = []
+    contract = re.fullmatch(r"(ES|NQ)(?:[1-9]!|[FGHJKMNQUVXZ][0-9]{1,4})", setup.symbol.rsplit(":", 1)[-1])
+    if contract is None or contract.group(1) != setup.root_symbol.value:
+        errors.append("Unsupported instrument; strict_v1 supports ES/NQ only")
     if d.get("policy_version") != POLICY_VERSION:
         errors.append("Unsupported setup policy; update the Pine alert snapshot")
     if not d.get("bar_close_time"):

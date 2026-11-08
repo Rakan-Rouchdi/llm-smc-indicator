@@ -20,6 +20,7 @@ from app.database import get_db, init_db
 from app.models import DecisionJobRecord, LLMDecisionRecord, SetupAlertRecord, AlertObservationRecord, NotificationRecord
 from app.monitoring import ReceiptTimingMiddleware, operational_status
 from app.news import replace_calendar, calendar_context
+from app.news_refresh import CalendarRefreshWorker
 from app.logging_config import protect_access_logs
 from app.schemas import SetupAlert, CalendarUpdate, AlertObservation
 from app.worker import DecisionWorker
@@ -41,12 +42,18 @@ async def lifespan(app: FastAPI):
     protect_access_logs()
     init_db()
     worker = DecisionWorker(get_settings()) if get_settings().decision_worker_enabled else None
+    calendar_worker = CalendarRefreshWorker(get_settings()) if get_settings().news_provider == "forexfactory" else None
     app.state.decision_worker = worker
+    app.state.calendar_worker = calendar_worker
+    if calendar_worker is not None:
+        calendar_worker.start()
     if worker is not None:
         worker.start()
     try:
         yield
     finally:
+        if calendar_worker is not None:
+            await run_in_threadpool(calendar_worker.stop)
         if worker is not None:
             await run_in_threadpool(worker.stop)
 
@@ -166,6 +173,8 @@ def system_status(request: Request, db: Annotated[Session, Depends(get_db)]) -> 
 
 @app.put("/context/news-calendar", dependencies=[Depends(require_dashboard_auth)])
 def put_calendar(payload: CalendarUpdate, db: Annotated[Session, Depends(get_db)]):
+    if get_settings().news_provider == "forexfactory":
+        raise HTTPException(status_code=409, detail="Switch NEWS_PROVIDER to manual before manual calendar updates")
     try:
         replace_calendar(db, payload, datetime.now(timezone.utc))
     except ValueError as exc:
