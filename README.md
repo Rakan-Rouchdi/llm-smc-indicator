@@ -10,7 +10,7 @@ The MVP is decision support only. It does not place trades, connect to brokers, 
 - FastAPI commits TradingView alert receipts and durable decision jobs, returning HTTP 202 before LLM processing.
 - Incoming webhook JSON is validated against `schemas/setup_alert.schema.json`.
 - Pydantic models parse setup alerts and LLM decisions.
-- Verified manual news-calendar context is available; Telegram remains mock.
+- Verified manual news-calendar context and opt-in automatic scheduled-calendar refresh are available; Telegram remains mock.
 - Configurable OpenAI provider with deterministic mock fallback returns strict JSON.
 - Deterministic validator approves or converts decisions to `NO_TRADE`.
 - SQLite locally and PostgreSQL on Neon store setups, jobs, context, decisions, validator results, and outcome placeholders.
@@ -202,6 +202,30 @@ persistent storage or provide a production availability guarantee.
 See `docs/phase6c_render_neon_deployment.md` for setup, validation, and rollback.
 The existing TradingView alert has been cut over in place to the stable Render
 webhook; see `docs/phase6c_tradingview_render_cutover.md`.
+
+## Automatic Calendar and Closed-Market Testing
+
+The optional `NEWS_PROVIDER=forexfactory` worker refreshes the publisher's weekly
+USD economic calendar in the backend. Keep `REQUIRE_VERIFIED_NEWS=true` and
+`NEWS_MAX_AGE_HOURS=24`. Refresh failures never renew the last good snapshot;
+stale/missing coverage produces NO_TRADE. This is source-validated scheduled
+calendar coverage, not independent fact-checking or a breaking-news feed.
+
+Deployment, source limitations, refresh diagnostics and rollback:
+[Automatic news calendar](docs/automatic_news_calendar.md). The worker is opt-in;
+merging this change alone does not change a production manual-news setting.
+
+An isolated local dashboard preview works with the market closed:
+
+```bash
+backend/.venv/bin/python backend/scripts/preview_mvp.py --port 8012 --scenario approved
+```
+
+Open `http://127.0.0.1:8012/dashboard`. History includes approved, blackout, stale
+and unsupported-gold fixtures; `--scenario` chooses which appears latest.
+It uses disposable SQLite, mock reasoning, no `.env`, no outbound notifications
+and no TradingView alert. Stop with Ctrl-C. Never tunnel this unauthenticated
+loopback-only preview. See [closed-market testing](docs/closed_market_testing.md).
 
 ## Validation Docs
 
