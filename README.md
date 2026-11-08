@@ -10,11 +10,31 @@ The MVP is decision support only. It does not place trades, connect to brokers, 
 - FastAPI commits TradingView alert receipts and durable decision jobs, returning HTTP 202 before LLM processing.
 - Incoming webhook JSON is validated against `schemas/setup_alert.schema.json`.
 - Pydantic models parse setup alerts and LLM decisions.
-- Mock news and Telegram context are added.
+- Verified manual news-calendar context is available; Telegram remains mock.
 - Configurable OpenAI provider with deterministic mock fallback returns strict JSON.
 - Deterministic validator approves or converts decisions to `NO_TRADE`.
 - SQLite locally and PostgreSQL on Neon store setups, jobs, context, decisions, validator results, and outcome placeholders.
 - Local dashboard displays latest setup, history, context, decision, validation, and raw payloads.
+
+## Strict Policy and Operations Update
+
+The November 2026 implementation uses `strict_v1` Pine facts, exact candle-close
+timestamps, a 100-point confirmation rubric, and mirrored backend eligibility
+checks. Legacy snapshots remain stored but cannot receive strict approval.
+Unknown/stale news coverage blocks approval by default. This is intentional:
+an empty mock calendar is not evidence that no market event exists.
+
+Read [implementation and rollout notes](docs/strict_policy_rollout.md) before
+deploying. They include manual calendar ingestion, alert-expiry observations,
+authenticated hosted checks, notification setup, and the exact proposed alert
+replacement. The updated chart does not update an existing alert snapshot.
+
+`NEWS_PROVIDER=manual` and `REQUIRE_VERIFIED_NEWS=true` are the live configuration.
+For isolated mock exercises only, use `NEWS_PROVIDER=mock` and explicitly set
+`REQUIRE_VERIFIED_NEWS=false`. Keep `ENABLE_NOTIFICATIONS=false` during tests.
+OpenAI failures are recorded with fallback provenance and held as `NO_TRADE`.
+No mock/fallback, delivery-test, rejected, or expired decision is pushed as a
+live final notification.
 
 ## Webhook Reliability
 
@@ -73,6 +93,11 @@ POST /webhooks/tradingview
 ## API Routes
 
 - `GET /health`
+- `GET /status` (authenticated operations, alert observations, latency, queue)
+- `GET /notifications` (authenticated notification delivery status)
+- `GET /context/news-calendar` (authenticated calendar coverage)
+- `PUT /context/news-calendar` (authenticated complete verified snapshot)
+- `PUT /monitoring/alert` (authenticated observation only, not alert creation)
 - `GET /setups`
 - `GET /setups/{id_or_setup_id}`
 - `GET /decisions/latest`
@@ -119,9 +144,10 @@ LLM_TIMEOUT_SECONDS=20
 LLM_MAX_RETRIES=2
 ```
 
-If the key is absent or an OpenAI request/output fails, the workflow uses the
-deterministic mock provider. The LLM output must pass JSON Schema, Pydantic, and
-deterministic trade validation.
+If the key is absent or an OpenAI request/output fails, the provider fallback
+remains available, but an OpenAI-requested workflow holds that fallback as
+`NO_TRADE` for human review. It never pushes a mock BUY/SELL as a live decision.
+The LLM output must pass JSON Schema, Pydantic, and deterministic trade validation.
 
 See `docs/live_openai_integration.md` for the controlled enablement and rollback
 procedure.
