@@ -11,6 +11,17 @@ PROJECT_ROOT = BACKEND_ROOT.parent
 sys.path.insert(0, str(BACKEND_ROOT))
 
 
+@pytest.fixture(autouse=True)
+def isolate_external_credentials(monkeypatch):
+    # Unit tests must never inherit live credentials from a developer's .env.
+    monkeypatch.setenv("LLM_PROVIDER", "mock")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
+    monkeypatch.setenv("NOTIFICATION_WEBHOOK_URL", "")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "")
+
+
 @pytest.fixture
 def valid_setup_payload() -> dict:
     return json.loads((PROJECT_ROOT / "examples" / "tradingview_webhook_example.json").read_text())
@@ -30,6 +41,7 @@ def pine_alert_payload() -> dict:
 def fresh_setup_payload(valid_setup_payload) -> dict:
     now = datetime.now(timezone.utc).replace(microsecond=0)
     valid_setup_payload["bar_time"] = (now - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+    valid_setup_payload["diagnostics"]["bar_close_time"] = now.isoformat()
     valid_setup_payload["setup_id"] = f"CME_MINI_ES1_5_{now.strftime('%Y%m%dT%H%M%SZ')}_pytest"
     return valid_setup_payload
 
@@ -40,6 +52,10 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("WEBHOOK_SECRET", "test-secret")
     monkeypatch.setenv("LLM_PROVIDER", "mock")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    monkeypatch.setenv("NEWS_PROVIDER", "mock")
+    monkeypatch.setenv("REQUIRE_VERIFIED_NEWS", "false")
+    monkeypatch.setenv("ENABLE_NOTIFICATIONS", "false")
     monkeypatch.setenv("DECISION_WORKER_ENABLED", "false")
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("DASHBOARD_USERNAME", "")

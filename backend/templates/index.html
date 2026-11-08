@@ -11,11 +11,26 @@
       <header class="topbar">
         <div>
           <h1>SMC LLM Dashboard</h1>
-          <p>Mock-context webhook decisions</p>
+          <p>Decision support | {{ operations.provider }} provider</p>
         </div>
         <a class="button" href="/health">Health</a>
         <a class="button" href="/status">Processing Status</a>
       </header>
+
+      <section class="operations" aria-labelledby="operations-title">
+        <h2 id="operations-title">{{ "Armed (operator-verified)" if operations.armed else "Not confirmed ready" }}</h2>
+        <dl class="operations-grid">
+          <div><dt>Worker</dt><dd>{{ "RUNNING" if operations.worker_alive else "STOPPED" }}</dd></div>
+          <div><dt>TradingView alert</dt><dd>{{ operations.alert.status }}</dd></div>
+          <div><dt>News coverage</dt><dd>ES {{ operations.news.ES }} / NQ {{ operations.news.NQ }}</dd></div>
+          <div><dt>Failed jobs</dt><dd>{{ operations.jobs.get("FAILED", 0) }}</dd></div>
+          <div><dt>Oldest pending</dt><dd>{{ operations.oldest_pending_seconds }}s</dd></div>
+          <div><dt>Notifications</dt><dd>{{ operations.notification_delivery }} | {{ operations.notifications.get("SENT", 0) }} sent / {{ operations.notifications.get("FAILED", 0) + operations.notifications.get("UNKNOWN", 0) }} need review</dd></div>
+        </dl>
+        {% if operations.alert.get("expires_at") %}<p>Alert expiry: {{ operations.alert.expires_at }} | Last checked: {{ operations.alert.observed_at }}</p>{% endif %}
+        {% if operations.latest_natural_receipt %}<p>Last natural receipt: {{ operations.latest_natural_receipt.received_at }}</p>{% endif %}
+        {% if operations.latest_decision and operations.latest_decision.historical %}<p class="warning">Latest decision is historical, not a current entry signal.</p>{% endif %}
+      </section>
 
       {% if latest_setup %}
         <section class="summary-grid">
@@ -33,7 +48,7 @@
           </article>
           <article class="metric">
             <span>Rule Score</span>
-            <strong>{{ latest_setup.rule_score }}</strong>
+            <strong>{{ latest_setup.rule_score }}/100</strong>
           </article>
           <article class="metric">
             <span>Decision</span>
@@ -58,6 +73,7 @@
               <div><dt>Processing</dt><dd>{{ latest_setup.status }}</dd></div>
               {% if processing_error %}<div><dt>Processing Error</dt><dd>{{ processing_error }}</dd></div>{% endif %}
               <div><dt>Bar Open (UTC)</dt><dd>{{ latest_setup.bar_time }}</dd></div>
+              <div><dt>Bar Close (UTC)</dt><dd>{{ latest_setup.parsed_setup.diagnostics.get("bar_close_time", "Legacy estimate only") }}</dd></div>
               <div><dt>Session</dt><dd>{{ session.name }}</dd></div>
               <div><dt>BOS</dt><dd>{{ features.bos.state }}</dd></div>
               <div><dt>FVG</dt><dd>{{ features.fvg.state }}</dd></div>
@@ -79,7 +95,7 @@
                 <div><dt>LLM Action</dt><dd>{{ llm.action }}</dd></div>
                 <div><dt>Final Action</dt><dd>{{ latest_decision.final_action }}</dd></div>
                 <div><dt>Confidence</dt><dd>{{ latest_decision.confidence }}</dd></div>
-                <div><dt>Entry</dt><dd>{{ latest_decision.entry_preferred }}</dd></div>
+                <div><dt>Entry (unfilled)</dt><dd>{{ latest_decision.entry_preferred }}</dd></div>
                 <div><dt>Stop Loss</dt><dd>{{ latest_decision.stop_loss }}</dd></div>
                 <div><dt>TP1</dt><dd>{{ latest_decision.take_profit_1 }}</dd></div>
                 <div><dt>RR</dt><dd>{{ latest_decision.risk_reward }}</dd></div>
@@ -94,9 +110,10 @@
 
         <section class="two-column">
           <article class="panel">
-            <h2>Mock News Context</h2>
+            <h2>Recorded News Context</h2>
             {% if news_context %}
               <dl class="kv">
+                <div><dt>Coverage</dt><dd>{{ news_context.get("status", "UNVERIFIED") }}</dd></div>
                 <div><dt>Blackout</dt><dd>{{ news_context.blackout_active }}</dd></div>
                 <div><dt>Bias</dt><dd>{{ news_context.market_bias }}</dd></div>
                 <div><dt>Event</dt><dd>{{ news_context.high_impact_event_name or "None" }}</dd></div>

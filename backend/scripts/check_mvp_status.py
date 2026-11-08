@@ -1,9 +1,12 @@
 import argparse
+import base64
 import json
+import os
 import sqlite3
 import sys
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 from pathlib import Path
 from typing import Any, Callable
 
@@ -12,21 +15,47 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATABASE = PROJECT_ROOT / "smc_llm.db"
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def request_for(url: str):
+    parsed = urlsplit(url)
+    if parsed.query or parsed.fragment or parsed.username or parsed.password:
+        raise ValueError("Use an origin URL without credentials or query parameters")
+    if parsed.scheme != "https" and not (parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}):
+        raise ValueError("Remote monitoring requires HTTPS")
+    headers = {}
+    username, password = os.getenv("DASHBOARD_USERNAME"), os.getenv("DASHBOARD_PASSWORD")
+    if username and password:
+        headers["Authorization"] = "Basic " + base64.b64encode(f"{username}:{password}".encode()).decode()
+    return urllib.request.Request(url, headers=headers)
+
+
+def open_request(url, timeout):
+    return urllib.request.build_opener(NoRedirect()).open(request_for(url), timeout=timeout)
+
+
 def fetch_json(url: str, timeout: float) -> tuple[int, dict[str, Any] | None]:
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        with open_request(url, timeout) as response:
             body = json.loads(response.read().decode("utf-8"))
             return response.status, body
-    except (urllib.error.URLError, json.JSONDecodeError):
+    except urllib.error.HTTPError as exc:
+        return exc.code, None
+    except (urllib.error.URLError, json.JSONDecodeError, ValueError):
         return 0, None
 
 
 def fetch_status(url: str, timeout: float) -> int:
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        with open_request(url, timeout) as response:
             response.read(1)
             return response.status
-    except urllib.error.URLError:
+    except urllib.error.HTTPError as exc:
+        return exc.code
+    except (urllib.error.URLError, ValueError):
         return 0
 
 
@@ -103,7 +132,7 @@ def check_database(database_path: Path) -> dict[str, Any]:
 
 def collect_status(
     base_url: str,
-    database_path: Path,
+    database_path: Path | None,
     timeout: float,
     json_fetcher: Callable[[str, float], tuple[int, dict[str, Any] | None]] = fetch_json,
     status_fetcher: Callable[[str, float], int] = fetch_status,
@@ -113,7 +142,9 @@ def collect_status(
         f"{base_url}/decisions/latest", timeout
     )
     dashboard_status = status_fetcher(f"{base_url}/dashboard", timeout)
-    database = check_database(database_path)
+    operations_code, operations = json_fetcher(f"{base_url}/status", timeout)
+    operations = operations or {}
+    database = check_database(database_path) if database_path else {"ok": operations.get("database") == "ok", "source": "hosted /status"}
     decision_summary = summarize_decision(decision_payload)
 
     checks = {
@@ -133,27 +164,31 @@ def collect_status(
         },
         "database": database,
     }
+    if database_path is None:
+        checks["operations"] = {"ok": operations_code == 200 and operations.get("service_ready") is True,
+                                "status_code": operations_code, "response": operations}
     return {
-        "base_url": base_url,
+        "base_url": "[redacted]",
         "ok": all(check["ok"] for check in checks.values()),
+        "armed": operations.get("armed", False),
         "checks": checks,
     }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check the local SMC LLM MVP.")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8003")
-    parser.add_argument("--database", type=Path, default=DEFAULT_DATABASE)
+    parser = argparse.ArgumentParser(description="Check local or hosted MVP; credentials come from environment only.")
+    parser.add_argument("--base-url", default=os.getenv("MVP_BASE_URL", "http://127.0.0.1:8003"))
+    parser.add_argument("--database", type=Path, help="Optional local SQLite check; omit for hosted Postgres")
     parser.add_argument("--timeout", type=float, default=3.0)
     args = parser.parse_args()
 
     status = collect_status(
         args.base_url.rstrip("/"),
-        args.database.expanduser().resolve(),
+        args.database.expanduser().resolve() if args.database else None,
         args.timeout,
     )
     print(json.dumps(status, indent=2, default=str))
-    return 0 if status["ok"] else 1
+    return 0 if status["ok"] and status["armed"] else 1
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from app.schemas import Direction, LLMTradeDecision, SetupAlert, TradeAction
 from app.timing import setup_timing
+from app.eligibility import setup_rejections
 
 
 ValidatorStatus = Literal["APPROVED", "REJECTED"]
@@ -18,6 +19,10 @@ class ValidationPolicy:
     max_setup_age_minutes: int = 15
     no_trade_during_blackout: bool = True
     no_trade_when_consolidation: bool = True
+    min_rule_score: int = 75
+    confirmation_max_bars: int = 6
+    require_verified_news: bool = False
+    enforce_setup_features: bool = True
 
 
 @dataclass(frozen=True)
@@ -96,6 +101,11 @@ def validate_llm_decision(
     policy = policy or ValidationPolicy()
     warnings = ["Confidence is a setup-quality score, not a win probability."]
     rejections: list[str] = []
+    if policy.enforce_setup_features:
+        rejections.extend(setup_rejections(setup_alert, policy.min_rule_score, policy.confirmation_max_bars))
+    news = context.get("news", {})
+    if policy.require_verified_news and news.get("status") not in {"CLEAR", "BLACKOUT"}:
+        rejections.append("Verified news coverage is unavailable")
 
     coerced_decision = _coerce_decision(decision)
     if isinstance(coerced_decision, ValidatorResult):
@@ -129,6 +139,11 @@ def validate_llm_decision(
         entry = llm_decision.entry.preferred
         stop_loss = llm_decision.stop_loss
         take_profit_1 = llm_decision.take_profit.tp1
+        if current_time is not None and llm_decision.expires_at is not None:
+            if llm_decision.expires_at.tzinfo is None or llm_decision.expires_at <= current_time:
+                rejections.append("LLM decision has expired or has an invalid expiry")
+        if entry is not None and not setup_alert.entry.low <= entry <= setup_alert.entry.high:
+            rejections.append("LLM entry is outside the source zone")
 
         if entry is None or stop_loss is None or take_profit_1 is None:
             rejections.append("Trade decision requires numeric entry, stop loss, and TP1")

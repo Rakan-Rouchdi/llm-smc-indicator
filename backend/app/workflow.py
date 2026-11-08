@@ -1,4 +1,7 @@
 import json
+import hashlib
+import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -7,12 +10,14 @@ from sqlalchemy.exc import IntegrityError
 
 from app.config import Settings
 from app.context import build_context
-from app.llm_client import get_llm_provider
+from app.llm_client import get_llm_provider, no_trade_decision
 from app.llm_prompt import PROMPT_VERSION
 from app.models import DecisionJobRecord, LLMDecisionRecord, OutcomeRecord, SetupAlertRecord
 from app.schemas import LLMTradeDecision, OutcomeUpdate, SetupAlert
 from app.validators import ValidationPolicy, ValidatorResult, validate_llm_decision
 from app.timing import setup_timing
+
+logger = logging.getLogger(__name__)
 
 
 def _json_dumps(payload: Any) -> str:
@@ -32,6 +37,9 @@ def _risk_policy(settings: Settings) -> dict[str, Any]:
         "max_setup_age_minutes": settings.max_setup_age_minutes,
         "no_trade_during_blackout": True,
         "no_trade_when_consolidation": True,
+        "min_rule_score": settings.min_rule_score,
+        "confirmation_max_bars": settings.confirmation_max_bars,
+        "require_verified_news": settings.require_verified_news,
     }
 
 
@@ -40,6 +48,9 @@ def _validation_policy(settings: Settings) -> ValidationPolicy:
         min_confidence_for_trade=settings.llm_confidence_approve_threshold,
         min_risk_reward=1.5,
         max_setup_age_minutes=settings.max_setup_age_minutes,
+        min_rule_score=settings.min_rule_score,
+        confirmation_max_bars=settings.confirmation_max_bars,
+        require_verified_news=settings.require_verified_news,
     )
 
 
@@ -106,10 +117,17 @@ def get_latest_decision_record(db: Session) -> LLMDecisionRecord | None:
     return db.query(LLMDecisionRecord).order_by(LLMDecisionRecord.created_at.desc(), LLMDecisionRecord.id.desc()).first()
 
 
-def accept_tradingview_alert(payload: dict[str, Any], db: Session) -> dict[str, Any]:
+def accept_tradingview_alert(payload: dict[str, Any], db: Session, timings: dict | None = None) -> dict[str, Any]:
     """Commit the receipt and job together before acknowledging the sender."""
     setup = SetupAlert.model_validate(payload)
+    timings = timings if timings is not None else {}
+    timings["setup_fingerprint"] = hashlib.sha256(setup.setup_id.encode()).hexdigest()[:16]
+    started = time.perf_counter()
+    db.connection()
+    timings["db_connect_ms"] = round((time.perf_counter() - started) * 1000, 2)
+    started = time.perf_counter()
     existing = db.query(SetupAlertRecord).filter_by(setup_id=setup.setup_id).first()
+    timings["lookup_ms"] = round((time.perf_counter() - started) * 1000, 2)
     if existing is not None:
         return {"status": "duplicate", "duplicate": True, "setup_id": setup.setup_id}
     db.add(SetupAlertRecord(
@@ -120,7 +138,9 @@ def accept_tradingview_alert(payload: dict[str, Any], db: Session) -> dict[str, 
     ))
     db.add(DecisionJobRecord(setup_id=setup.setup_id))
     try:
+        started = time.perf_counter()
         db.commit()
+        timings["commit_ms"] = round((time.perf_counter() - started) * 1000, 2)
     except IntegrityError:
         # Concurrent TradingView retries must not enqueue a second LLM call.
         db.rollback()
@@ -160,6 +180,7 @@ def process_tradingview_alert(
             }
 
     decision_time = current_time or datetime.now(timezone.utc)
+    processing_started = time.perf_counter()
     context = context_override or build_context(setup_alert.root_symbol.value, current_time=decision_time)
 
     setup_record = existing or SetupAlertRecord(
@@ -189,8 +210,32 @@ def process_tradingview_alert(
     except (ValueError, TypeError, OverflowError):
         llm_input["setup_timing"] = {"error": "Setup timing could not be validated"}
 
-    provider = get_llm_provider(settings)
-    llm_decision = provider.decide(llm_input)
+    # Preflight blocks known-invalid setups without paying for an LLM call.
+    preview = no_trade_decision(setup_alert.setup_id, ["Preflight"])
+    preflight = validate_llm_decision(setup_alert, preview, context, _validation_policy(settings), decision_time)
+    blockers = [reason for reason in preflight.rejections if reason != "LLM chose NO_TRADE"]
+    started = time.perf_counter()
+    if blockers:
+        llm_decision = no_trade_decision(setup_alert.setup_id, blockers)
+        model_name = "deterministic-preflight"
+    else:
+        provider = get_llm_provider(settings)
+        llm_decision = provider.decide(llm_input)
+        model_name = provider.model_name
+    llm_input["execution"] = {"provider_requested": settings.llm_provider, "model_used": model_name,
+                              "setup_fingerprint": hashlib.sha256(setup_alert.setup_id.encode()).hexdigest()[:16],
+                              "provider_ms": round((time.perf_counter() - started) * 1000, 2)}
+    if existing is not None:
+        received = existing.received_at
+        if received.tzinfo is None:
+            received = received.replace(tzinfo=timezone.utc)
+        llm_input["execution"]["receipt_to_processing_ms"] = round(max(0, (decision_time - received).total_seconds()) * 1000, 2)
+    if settings.llm_provider == "openai" and model_name.startswith("mock"):
+        llm_decision = no_trade_decision(setup_alert.setup_id, ["Live provider unavailable; fallback held for human review"])
+    # Calendar coverage or blackout can change while a model is responding.
+    if context_override is None:
+        context = build_context(setup_alert.root_symbol.value, current_time=current_time or datetime.now(timezone.utc))
+    setup_record.enriched_context_json = _json_dumps(context)
     validator_result = validate_llm_decision(
         setup_alert=setup_alert,
         decision=llm_decision,
@@ -198,11 +243,12 @@ def process_tradingview_alert(
         policy=_validation_policy(settings),
         current_time=current_time or datetime.now(timezone.utc),
     )
+    llm_input["execution"]["processing_ms_before_commit"] = round((time.perf_counter() - processing_started) * 1000, 2)
 
     rejection_reason = "; ".join(validator_result.rejections) if validator_result.rejections else None
     decision_record = LLMDecisionRecord(
         setup_id=setup_alert.setup_id,
-        model=provider.model_name,
+        model=model_name,
         prompt_version=PROMPT_VERSION,
         raw_input_json=_json_dumps(llm_input),
         raw_output_json=llm_decision.model_dump_json(by_alias=True),
@@ -220,6 +266,10 @@ def process_tradingview_alert(
         validation_rejection_reason=rejection_reason,
     )
     db.add(decision_record)
+    from app.notifier import enqueue_notification
+    persistence_started = time.perf_counter()
+    db.flush()
+    enqueue_notification(db, setup_alert, decision_record, settings, context)
     setup_record.status = "PROCESSED"
     if job_token is not None:
         updated = db.query(DecisionJobRecord).filter_by(
@@ -229,6 +279,11 @@ def process_tradingview_alert(
             db.rollback()
             raise RuntimeError("Decision job lease was lost")
     db.commit()
+    logger.info("decision_persisted setup_fingerprint=%s provider_ms=%s processing_ms=%s persistence_ms=%s",
+                llm_input["execution"]["setup_fingerprint"],
+                llm_input["execution"]["provider_ms"],
+                round((time.perf_counter() - processing_started) * 1000, 2),
+                round((time.perf_counter() - persistence_started) * 1000, 2))
     db.refresh(setup_record)
     db.refresh(decision_record)
 

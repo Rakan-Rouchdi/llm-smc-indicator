@@ -2,11 +2,11 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
 class Source(str, Enum):
@@ -267,3 +267,36 @@ class OutcomeUpdate(StrictModel):
     mfe_points: float | None = None
     mae_points: float | None = None
     notes: str | None = None
+
+
+class CalendarEvent(StrictModel):
+    event_id: str = Field(min_length=1, max_length=255)
+    title: str = Field(min_length=1, max_length=255)
+    event_time: AwareDatetime
+    impact: Literal["HIGH", "MEDIUM", "LOW"]
+    symbols: list[Literal["ES", "NQ"]] = Field(min_length=1, max_length=2)
+    blackout_minutes_before: int = Field(default=30, ge=0, le=240)
+    blackout_minutes_after: int = Field(default=30, ge=0, le=240)
+
+
+class CalendarUpdate(StrictModel):
+    source: str = Field(min_length=1, max_length=255)
+    coverage_start: AwareDatetime
+    coverage_end: AwareDatetime
+    events: list[CalendarEvent] = Field(max_length=500)
+
+    @model_validator(mode="after")
+    def valid_coverage(self):
+        if not 0 < (self.coverage_end - self.coverage_start).total_seconds() <= 31 * 86400:
+            raise ValueError("Calendar coverage must span at most 31 days")
+        if len({event.event_id for event in self.events}) != len(self.events):
+            raise ValueError("Duplicate event IDs")
+        return self
+
+
+class AlertObservation(StrictModel):
+    alert_id: str = Field(min_length=1, max_length=100, pattern=r"^[0-9]+$")
+    symbol: str = Field(min_length=1, max_length=100)
+    timeframe: Literal["5", "15", "60", "240"]
+    active: bool
+    expires_at: AwareDatetime

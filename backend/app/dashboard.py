@@ -7,6 +7,8 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.auth import require_dashboard_auth
+from app.config import get_settings
+from app.monitoring import operational_status
 from app.database import get_db
 from app.models import DecisionJobRecord, LLMDecisionRecord, SetupAlertRecord
 from app.workflow import serialize_decision, serialize_setup
@@ -50,6 +52,7 @@ def index(
         "index.html",
         context={
             "request": request,
+            "operations": operational_status(db, get_settings(), getattr(request.app.state, "decision_worker", None)),
             "latest_setup": serialized_setup,
             "latest_decision": serialized_decision,
             "processing_error": job.last_error if job else None,

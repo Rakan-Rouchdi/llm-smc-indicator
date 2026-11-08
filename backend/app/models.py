@@ -113,3 +113,36 @@ class OutcomeRecord(Base):
     mfe_points: Mapped[float | None] = mapped_column(Float, nullable=True)
     mae_points: Mapped[float | None] = mapped_column(Float, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class CalendarCoverageRecord(Base):
+    __tablename__ = "calendar_coverage"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source: Mapped[str] = mapped_column(String(255))
+    coverage_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    coverage_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AlertObservationRecord(Base):
+    __tablename__ = "alert_observations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    alert_id: Mapped[str] = mapped_column(String(100))
+    symbol: Mapped[str] = mapped_column(String(100))
+    timeframe: Mapped[str] = mapped_column(String(30))
+    active: Mapped[int] = mapped_column(Integer)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class NotificationRecord(Base):
+    __tablename__ = "notification_outbox"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    decision_id: Mapped[int] = mapped_column(Integer, unique=True, index=True)
+    channel: Mapped[str] = mapped_column(String(30))
+    destination_hash: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(30), default="QUEUED", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(100), nullable=True)

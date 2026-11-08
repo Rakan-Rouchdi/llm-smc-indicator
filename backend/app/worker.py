@@ -10,7 +10,8 @@ from sqlalchemy import and_, or_, select, update
 
 from app.config import Settings
 from app.database import SessionLocal
-from app.models import DecisionJobRecord, SetupAlertRecord
+from app.models import DecisionJobRecord, SetupAlertRecord, NotificationRecord
+from app.notifier import deliver_one
 from app.workflow import process_tradingview_alert
 
 logger = logging.getLogger(__name__)
@@ -94,6 +95,10 @@ class DecisionWorker:
                                      DecisionJobRecord.lease_until).where(
                 DecisionJobRecord.status.in_(["QUEUED", "PROCESSING"]),
             )).all()
+            jobs += db.execute(select(NotificationRecord.status, NotificationRecord.available_at,
+                                      NotificationRecord.lease_until).where(
+                NotificationRecord.status.in_(["QUEUED", "PROCESSING"]),
+            )).all()
         delays = [3600.0]
         for status, available, lease in jobs:
             due = lease if status == "PROCESSING" else available
@@ -107,6 +112,8 @@ class DecisionWorker:
             self._wake.clear()
             try:
                 while not self._stop.is_set() and self.run_once():
+                    deliver_one(self.settings)
+                while not self._stop.is_set() and deliver_one(self.settings):
                     pass
                 delay = self._next_delay()
             except Exception as exc:

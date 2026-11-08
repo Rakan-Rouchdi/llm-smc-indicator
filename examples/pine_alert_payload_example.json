@@ -9,7 +9,7 @@
   "bar_time": "2026-07-06T14:00:00Z",
   "bar_index": 424242,
   "direction": "BULLISH",
-  "rule_score": 75,
+  "rule_score": 100,
   "price": 6721.25,
   "entry": {
     "zone_type": "FVG",
@@ -71,11 +71,17 @@
     "completed_low": 6716.0
   },
   "diagnostics": {
+    "policy_version": "strict_v1",
+    "bar_close_time": "2026-07-06T14:05:00Z",
+    "fvg_retested": true,
+    "zone_invalidated": false,
+    "companion_aligned": true,
+    "consolidation_clear_bars": 2,
     "atr": 5.25,
     "mintick": 0.25,
-    "bos_age_bars": 2,
+    "bos_age_bars": 4,
     "sweep_age_bars": 6,
-    "smt_age_bars": 4,
+    "smt_age_bars": 5,
     "notes": "Phase 2 Pine MVP payload"
   }
 }
