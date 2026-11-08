@@ -1,4 +1,5 @@
 import json
+import hashlib
 import logging
 import time
 from datetime import datetime, timezone
@@ -120,6 +121,7 @@ def accept_tradingview_alert(payload: dict[str, Any], db: Session, timings: dict
     """Commit the receipt and job together before acknowledging the sender."""
     setup = SetupAlert.model_validate(payload)
     timings = timings if timings is not None else {}
+    timings["setup_fingerprint"] = hashlib.sha256(setup.setup_id.encode()).hexdigest()[:16]
     started = time.perf_counter()
     db.connection()
     timings["db_connect_ms"] = round((time.perf_counter() - started) * 1000, 2)
@@ -221,6 +223,7 @@ def process_tradingview_alert(
         llm_decision = provider.decide(llm_input)
         model_name = provider.model_name
     llm_input["execution"] = {"provider_requested": settings.llm_provider, "model_used": model_name,
+                              "setup_fingerprint": hashlib.sha256(setup_alert.setup_id.encode()).hexdigest()[:16],
                               "provider_ms": round((time.perf_counter() - started) * 1000, 2)}
     if existing is not None:
         received = existing.received_at
@@ -276,7 +279,8 @@ def process_tradingview_alert(
             db.rollback()
             raise RuntimeError("Decision job lease was lost")
     db.commit()
-    logger.info("decision_persisted provider_ms=%s processing_ms=%s persistence_ms=%s",
+    logger.info("decision_persisted setup_fingerprint=%s provider_ms=%s processing_ms=%s persistence_ms=%s",
+                llm_input["execution"]["setup_fingerprint"],
                 llm_input["execution"]["provider_ms"],
                 round((time.perf_counter() - processing_started) * 1000, 2),
                 round((time.perf_counter() - persistence_started) * 1000, 2))

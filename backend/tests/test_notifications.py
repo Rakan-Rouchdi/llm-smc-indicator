@@ -124,3 +124,11 @@ def test_crashed_send_lease_becomes_unknown(notification_setup):
     assert not deliver_one(settings, lambda *_: pytest.fail("Ambiguous delivery"))
     with SessionLocal() as db:
         assert db.query(NotificationRecord).one().status == "UNKNOWN"
+
+
+def test_bad_notification_destination_does_not_lose_decision(notification_setup):
+    payload, settings = notification_setup
+    settings.notification_webhook_url = "https://[invalid"
+    assert process(payload, settings)["status"] == "processed"
+    with SessionLocal() as db:
+        assert db.query(NotificationRecord).count() == 0

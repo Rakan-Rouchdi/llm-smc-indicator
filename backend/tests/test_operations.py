@@ -63,6 +63,17 @@ def test_monitoring_distinguishes_health_from_readiness(client):
     assert "Not confirmed ready" in client.get("/dashboard").text
 
 
+def test_natural_receipt_monitor_excludes_delivery_tests(client, fresh_setup_payload):
+    client.post("/webhook/tradingview?secret=test-secret", json=fresh_setup_payload)
+    natural_id = fresh_setup_payload["setup_id"]
+    fresh_setup_payload["setup_id"] += "_test"
+    fresh_setup_payload["diagnostics"]["test_mode"] = True
+    client.post("/webhook/tradingview?secret=test-secret", json=fresh_setup_payload)
+    status = client.get("/status").json()
+    assert status["latest_natural_receipt"]["setup_id"] == natural_id
+    assert status["notification_delivery"] == "DISABLED"
+
+
 def test_new_endpoints_require_auth(client, monkeypatch):
     monkeypatch.setenv("DASHBOARD_USERNAME", "operator")
     monkeypatch.setenv("DASHBOARD_PASSWORD", "test-password")

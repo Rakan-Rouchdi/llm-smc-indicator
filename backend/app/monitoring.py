@@ -10,8 +10,9 @@ from datetime import datetime, timezone
 
 from sqlalchemy import func, select, text
 
-from app.models import AlertObservationRecord, DecisionJobRecord, NotificationRecord
+from app.models import AlertObservationRecord, DecisionJobRecord, NotificationRecord, SetupAlertRecord
 from app.news import calendar_context, utc
+from app.notifier import destination
 from app.workflow import get_latest_decision_record
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,8 @@ def operational_status(db, settings, worker=None, now=None):
         DecisionJobRecord.status.in_(["QUEUED", "PROCESSING"])))
     age = max(0, (now - utc(oldest)).total_seconds()) if oldest else 0
     latest = get_latest_decision_record(db)
+    recent = db.query(SetupAlertRecord).order_by(SetupAlertRecord.received_at.desc(), SetupAlertRecord.id.desc()).limit(200).all()
+    natural = next((row for row in recent if json.loads(row.payload_json).get("diagnostics", {}).get("test_mode") is not True), None)
     alert = alert_status(db, settings, now)
     news = {symbol: calendar_context(db, symbol, now, settings)["status"]
             if settings.news_provider == "manual" else "UNVERIFIED" for symbol in ("ES", "NQ")}
@@ -87,6 +90,9 @@ def operational_status(db, settings, worker=None, now=None):
     return {"database": "ok", "worker_alive": alive, "service_ready": ready,
             "armed": ready and alert["status"] in {"ACTIVE", "EXPIRING"} and all(v == "CLEAR" for v in news.values()),
             "jobs": counts, "oldest_pending_seconds": round(age, 1), "notifications": notifications,
+            "notification_delivery": "DISABLED" if not settings.enable_notifications else "CONFIGURED" if destination(settings) else "NOT_CONFIGURED",
+            "latest_natural_receipt": {"setup_id": natural.setup_id, "received_at": utc(natural.received_at).isoformat()} if natural else None,
+            "natural_receipt_scope": "Newest 200 receipts; delivery tests excluded",
             "alert": alert, "news": news, "receipts": receipt_summary(),
             "provider": settings.llm_provider, "configured_model": settings.openai_model if settings.llm_provider == "openai" else "mock",
             "latest_decision": {"setup_id": latest.setup_id, "model": latest.model,

@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     llm_confidence_approve_threshold: int = 70
     llm_confidence_watchlist_threshold: int = 55
     max_setup_age_minutes: int = 15
-    min_rule_score: int = Field(default=75, ge=0, le=100)
-    confirmation_max_bars: int = Field(default=6, ge=1, le=30)
+    min_rule_score: int = Field(default=75, ge=75, le=100)
+    confirmation_max_bars: int = Field(default=6, ge=3, le=6)
     news_provider: Literal["mock", "manual"] = "mock"
     require_verified_news: bool = True
     news_max_age_hours: int = Field(default=24, ge=1, le=168)

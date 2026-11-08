@@ -19,7 +19,10 @@ def destination(settings):
         return None
     if settings.notification_webhook_url:
         url = settings.notification_webhook_url
-        parsed = urlsplit(url)
+        try:
+            parsed = urlsplit(url)
+        except ValueError:
+            return None
         if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
             return None
         channel, identity = "webhook", url

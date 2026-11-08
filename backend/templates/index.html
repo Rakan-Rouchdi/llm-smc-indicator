@@ -25,9 +25,10 @@
           <div><dt>News coverage</dt><dd>ES {{ operations.news.ES }} / NQ {{ operations.news.NQ }}</dd></div>
           <div><dt>Failed jobs</dt><dd>{{ operations.jobs.get("FAILED", 0) }}</dd></div>
           <div><dt>Oldest pending</dt><dd>{{ operations.oldest_pending_seconds }}s</dd></div>
-          <div><dt>Notifications</dt><dd>{{ operations.notifications.get("SENT", 0) }} sent / {{ operations.notifications.get("FAILED", 0) + operations.notifications.get("UNKNOWN", 0) }} need review</dd></div>
+          <div><dt>Notifications</dt><dd>{{ operations.notification_delivery }} | {{ operations.notifications.get("SENT", 0) }} sent / {{ operations.notifications.get("FAILED", 0) + operations.notifications.get("UNKNOWN", 0) }} need review</dd></div>
         </dl>
         {% if operations.alert.get("expires_at") %}<p>Alert expiry: {{ operations.alert.expires_at }} | Last checked: {{ operations.alert.observed_at }}</p>{% endif %}
+        {% if operations.latest_natural_receipt %}<p>Last natural receipt: {{ operations.latest_natural_receipt.received_at }}</p>{% endif %}
         {% if operations.latest_decision and operations.latest_decision.historical %}<p class="warning">Latest decision is historical, not a current entry signal.</p>{% endif %}
       </section>
 
