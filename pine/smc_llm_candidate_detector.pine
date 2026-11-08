@@ -22,8 +22,8 @@ int sweepBufferTicks = input.int(1, "Sweep buffer ticks", minval=0)
 int equalHighLowToleranceTicks = input.int(4, "Equal high/low tolerance ticks", minval=1)
 int smtLookback = input.int(20, "SMT lookback", minval=5, maxval=200)
 int rvolLength = input.int(50, "RVOL length", minval=5, maxval=300)
-float thinVolumeThreshold = input.float(0.70, "Thin RVOL threshold", minval=0.05, step=0.05)
-float strongVolumeThreshold = input.float(1.50, "Strong RVOL threshold", minval=0.10, step=0.05)
+float thinVolumeThreshold = input.float(0.70, "Thin RVOL threshold", minval=0.70, step=0.05)
+float strongVolumeThreshold = input.float(1.50, "Strong RVOL threshold", minval=1.50, step=0.05)
 int atrLength = input.int(14, "ATR length", minval=1, maxval=100)
 float displacementAtrMult = input.float(1.0, "Displacement ATR multiple", minval=0.1, step=0.1)
 int consolidationLookback = input.int(20, "Consolidation lookback", minval=5, maxval=200)
@@ -36,11 +36,13 @@ int setupExpiryBars = input.int(30, "Setup expiry bars", minval=3, maxval=300)
 float minRR = input.float(1.50, "Minimum candidate RR", minval=0.1, step=0.1)
 float defaultRR = input.float(2.0, "Default TP RR multiple", minval=0.1, step=0.1)
 int stopBufferTicks = input.int(2, "Stop buffer ticks", minval=0)
-int minRuleScore = input.int(60, "Minimum rule score", minval=0, maxval=100)
+int minRuleScore = input.int(75, "Minimum rule score", minval=75, maxval=100)
+int confirmationMaxBars = input.int(6, "Confirmation age limit", minval=3, maxval=6)
 bool showDiagnostics = input.bool(true, "Show diagnostic table")
-bool showZones = input.bool(true, "Show FVG zones")
-bool showProofMarkers = input.bool(true, "Show proof markers")
-bool showProvisionalTrades = input.bool(true, "Show provisional trade levels")
+string panelMode = input.string("Compact", "Panel mode", options=["Compact", "Diagnostics"])
+bool showZones = input.bool(false, "Show FVG zones")
+bool showProofMarkers = input.bool(false, "Show proof markers")
+bool showProvisionalTrades = input.bool(true, "Show candidate price labels")
 bool enableAlerts = input.bool(true, "Enable alert() JSON payloads")
 bool enableTestWebhookAlert = input.bool(false, "Enable test webhook alert", tooltip="Emits one schema-valid diagnostic payload on the next confirmed realtime bar. Disable after delivery testing.")
 
@@ -84,10 +86,9 @@ string autoCompanion = rootSymbol == "ES" ? "CME_MINI:NQ1!" : rootSymbol == "NQ"
 string companionSymbol = companionOverride == "" ? autoCompanion : companionOverride
 
 // Object retention keeps TradingView drawing limits under control on long charts.
-int maxStoredObjects = 90
+int maxStoredObjects = 30
 var array<box> fvgBoxes = array.new<box>()
 var array<label> proofLabels = array.new<label>()
-var array<line> proofLines = array.new<line>()
 
 f_store_box(box item) =>
     array.push(fvgBoxes, item)
@@ -100,12 +101,6 @@ f_store_label(label item) =>
     if array.size(proofLabels) > maxStoredObjects
         label old = array.shift(proofLabels)
         label.delete(old)
-
-f_store_line(line item) =>
-    array.push(proofLines, item)
-    if array.size(proofLines) > maxStoredObjects
-        line old = array.shift(proofLines)
-        line.delete(old)
 
 // -----------------------------------------------------------------------------+
 // Session context in New York time.
@@ -175,21 +170,19 @@ if bullishBos
     bosState := "BULLISH"
     bosLevel := lastSwingHigh
     bosBar := bar_index
-    if showProofMarkers and not na(lastSwingHighBar)
-        line bosLine = line.new(lastSwingHighBar, lastSwingHigh, bar_index, lastSwingHigh, xloc=xloc.bar_index, extend=extend.right, color=color.new(color.lime, 0), style=line.style_solid, width=2)
-        f_store_line(bosLine)
+    if showProofMarkers
+        f_store_label(label.new(bar_index, high, "BOS BULL", textcolor=color.white, color=color.green))
 
 if bearishBos
     bosState := "BEARISH"
     bosLevel := lastSwingLow
     bosBar := bar_index
-    if showProofMarkers and not na(lastSwingLowBar)
-        line bosLine = line.new(lastSwingLowBar, lastSwingLow, bar_index, lastSwingLow, xloc=xloc.bar_index, extend=extend.right, color=color.new(color.red, 0), style=line.style_solid, width=2)
-        f_store_line(bosLine)
+    if showProofMarkers
+        f_store_label(label.new(bar_index, low, "BOS BEAR", textcolor=color.white, color=color.red))
 
 int bosAge = na(bosBar) ? 100000 : bar_index - bosBar
-bool bullBosRecent = bosState == "BULLISH" and bosAge <= setupExpiryBars
-bool bearBosRecent = bosState == "BEARISH" and bosAge <= setupExpiryBars
+bool bullBosRecent = bosState == "BULLISH" and bosAge <= confirmationMaxBars
+bool bearBosRecent = bosState == "BEARISH" and bosAge <= confirmationMaxBars
 
 // -----------------------------------------------------------------------------+
 // Fair Value Gap. A single active FVG is tracked for deterministic payloads.
@@ -225,8 +218,10 @@ if newBearFvg
 
 int fvgAge = na(fvgBar) ? na : bar_index - fvgBar
 bool fvgExpired = not na(fvgAge) and fvgAge > setupExpiryBars
-bool activeBullFvg = fvgState == "BULLISH" and not fvgExpired and not na(fvgLow) and not na(fvgHigh)
-bool activeBearFvg = fvgState == "BEARISH" and not fvgExpired and not na(fvgLow) and not na(fvgHigh)
+// A close through the far boundary invalidates the zone before eligibility.
+bool zoneInvalidated = (fvgState == "BULLISH" and close < fvgLow) or (fvgState == "BEARISH" and close > fvgHigh)
+bool activeBullFvg = fvgState == "BULLISH" and not fvgExpired and not zoneInvalidated and not na(fvgLow) and not na(fvgHigh)
+bool activeBearFvg = fvgState == "BEARISH" and not fvgExpired and not zoneInvalidated and not na(fvgLow) and not na(fvgHigh)
 bool fvgTouched = (activeBullFvg or activeBearFvg) and bar_index > fvgBar and high >= fvgLow and low <= fvgHigh
 
 if not na(activeFvgBox) and (activeBullFvg or activeBearFvg)
@@ -297,20 +292,20 @@ if bearishSweep
         f_store_label(sweepLabel)
 
 int sweepAge = na(sweepBar) ? na : bar_index - sweepBar
-bool bullSweepRecent = sweepState == "BULLISH" and not na(sweepAge) and sweepAge <= setupExpiryBars
-bool bearSweepRecent = sweepState == "BEARISH" and not na(sweepAge) and sweepAge <= setupExpiryBars
+bool bullSweepRecent = sweepState == "BULLISH" and not na(sweepAge) and bosAge <= sweepAge and sweepAge <= confirmationMaxBars
+bool bearSweepRecent = sweepState == "BEARISH" and not na(sweepAge) and bosAge <= sweepAge and sweepAge <= confirmationMaxBars
 
 // -----------------------------------------------------------------------------+
 // SMT divergence. This is a rolling-window approximation, not pivot-aligned SMT.
 // -----------------------------------------------------------------------------+
-float compHigh = request.security(companionSymbol, timeframe.period, high)
-float compLow = request.security(companionSymbol, timeframe.period, low)
+[compHigh, compLow, compTime, compCloseTime] = request.security(companionSymbol, timeframe.period, [high, low, time, time_close], gaps=barmerge.gaps_on, ignore_invalid_symbol=true)
+bool companionAligned = not na(compHigh) and not na(compLow) and compTime == time and compCloseTime == time_close
 bool currentMakesHigh = high >= ta.highest(high, smtLookback)
 bool currentMakesLow = low <= ta.lowest(low, smtLookback)
 bool companionMakesHigh = compHigh >= ta.highest(compHigh, smtLookback)
 bool companionMakesLow = compLow <= ta.lowest(compLow, smtLookback)
-bool bearishSmt = barstate.isconfirmed and currentMakesHigh and not companionMakesHigh
-bool bullishSmt = barstate.isconfirmed and currentMakesLow and not companionMakesLow
+bool bearishSmt = barstate.isconfirmed and companionAligned and currentMakesHigh and not companionMakesHigh
+bool bullishSmt = barstate.isconfirmed and companionAligned and currentMakesLow and not companionMakesLow
 
 var string smtState = "NONE"
 var int smtBar = na
@@ -330,8 +325,8 @@ if bearishSmt
         f_store_label(smtLabel)
 
 int smtAge = na(smtBar) ? na : bar_index - smtBar
-bool bullSmtRecent = smtState == "BULLISH" and not na(smtAge) and smtAge <= setupExpiryBars
-bool bearSmtRecent = smtState == "BEARISH" and not na(smtAge) and smtAge <= setupExpiryBars
+bool bullSmtRecent = smtState == "BULLISH" and not na(smtAge) and bosAge <= smtAge and smtAge <= confirmationMaxBars
+bool bearSmtRecent = smtState == "BEARISH" and not na(smtAge) and bosAge <= smtAge and smtAge <= confirmationMaxBars
 
 // -----------------------------------------------------------------------------+
 // Relative volume, displacement, consolidation, and HTF bias.
@@ -340,7 +335,7 @@ float atr = ta.atr(atrLength)
 float volumeSma = ta.sma(volume, rvolLength)
 float rvol = volumeSma > 0 ? volume / volumeSma : 0.0
 string volumeState = rvol < thinVolumeThreshold ? "THIN" : rvol >= strongVolumeThreshold ? "STRONG" : "NEUTRAL"
-bool volumeAllowed = volumeState != "THIN"
+bool volumeAllowed = volumeState != "THIN" and rvol >= 0.70
 
 float candleRange = math.max(high - low, tick)
 float candleBody = math.abs(close - open)
@@ -354,7 +349,12 @@ float path = math.sum(math.abs(close - close[1]), consolidationLookback)
 float directionalEfficiency = path > 0 ? math.abs(close - close[consolidationLookback]) / path : 0.0
 bool rangeCompressed = rangeAtrMultiple <= consolidationAtrMult
 bool lowEfficiency = directionalEfficiency < directionalEfficiencyMax
-bool consolidationActive = rangeCompressed and lowEfficiency
+bool rawConsolidation = rangeCompressed and lowEfficiency
+// Two completed clear bars prevent an intrabar/one-bar release of the pause.
+var int consolidationClearBars = 0
+if barstate.isconfirmed
+    consolidationClearBars := rawConsolidation or na(path) or na(atr) ? 0 : math.min(2, consolidationClearBars + 1)
+bool consolidationActive = rawConsolidation or consolidationClearBars < 2
 
 bgcolor(consolidationActive ? color.new(color.gray, 88) : na, title="Consolidation shading")
 
@@ -375,43 +375,46 @@ string htfBias = htfClose > htfFast and htfFast > htfSlow ? "BULLISH" : htfClose
 // -----------------------------------------------------------------------------+
 float entryLow = fvgLow
 float entryHigh = fvgHigh
-float entryPreferred = (entryLow + entryHigh) / 2.0
+float entryPreferred = math.round_to_mintick((entryLow + entryHigh) / 2.0)
 
-float bullStop = math.min(na(lastBullSweepLevel) ? entryLow : lastBullSweepLevel, entryLow) - stopBufferTicks * tick
-float bearStop = math.max(na(lastBearSweepLevel) ? entryHigh : lastBearSweepLevel, entryHigh) + stopBufferTicks * tick
+float bullStop = math.min(bullSweepRecent ? lastBullSweepLevel : entryLow, entryLow) - stopBufferTicks * tick
+float bearStop = math.max(bearSweepRecent ? lastBearSweepLevel : entryHigh, entryHigh) + stopBufferTicks * tick
 float bullRisk = entryPreferred - bullStop
 float bearRisk = bearStop - entryPreferred
-float bullTarget = entryPreferred + defaultRR * bullRisk
-float bearTarget = entryPreferred - defaultRR * bearRisk
+float bullTarget = math.round_to_mintick(entryPreferred + defaultRR * bullRisk)
+float bearTarget = math.round_to_mintick(entryPreferred - defaultRR * bearRisk)
 float bullReward = bullTarget - entryPreferred
 float bearReward = entryPreferred - bearTarget
 float bullRR = bullRisk > 0 ? bullReward / bullRisk : na
 float bearRR = bearRisk > 0 ? bearReward / bearRisk : na
 
 int bullScoreRaw = 0
-bullScoreRaw += activeBullFvg ? 40 : 0
-bullScoreRaw += bullSweepRecent ? 15 : 0
-bullScoreRaw += bullBosRecent ? 15 : 0
-bullScoreRaw += bullSmtRecent ? 15 : 0
+bullScoreRaw += activeBullFvg ? 25 : 0
+bullScoreRaw += bullSweepRecent ? 10 : 0
+bullScoreRaw += bullBosRecent ? 20 : 0
+bullScoreRaw += bullSmtRecent ? 10 : 0
 bullScoreRaw += volumeState == "STRONG" ? 10 : 0
-bullScoreRaw += htfBias == "BULLISH" ? 10 : htfBias == "BEARISH" ? -15 : 0
+bullScoreRaw += htfBias == "BULLISH" ? 15 : 0
 bullScoreRaw += displacementState == "BULLISH" ? 10 : 0
-bullScoreRaw += not bullSweepRecent and not bullSmtRecent ? -10 : 0
 int bullScore = int(math.min(100, math.max(0, bullScoreRaw)))
 
 int bearScoreRaw = 0
-bearScoreRaw += activeBearFvg ? 40 : 0
-bearScoreRaw += bearSweepRecent ? 15 : 0
-bearScoreRaw += bearBosRecent ? 15 : 0
-bearScoreRaw += bearSmtRecent ? 15 : 0
+bearScoreRaw += activeBearFvg ? 25 : 0
+bearScoreRaw += bearSweepRecent ? 10 : 0
+bearScoreRaw += bearBosRecent ? 20 : 0
+bearScoreRaw += bearSmtRecent ? 10 : 0
 bearScoreRaw += volumeState == "STRONG" ? 10 : 0
-bearScoreRaw += htfBias == "BEARISH" ? 10 : htfBias == "BULLISH" ? -15 : 0
+bearScoreRaw += htfBias == "BEARISH" ? 15 : 0
 bearScoreRaw += displacementState == "BEARISH" ? 10 : 0
-bearScoreRaw += not bearSweepRecent and not bearSmtRecent ? -10 : 0
 int bearScore = int(math.min(100, math.max(0, bearScoreRaw)))
 
-bool bullCandidate = barstate.isconfirmed and activeBullFvg and fvgTouched and not consolidationActive and volumeAllowed and (bullSweepRecent or bullSmtRecent) and (bullBosRecent or htfBias == "BULLISH") and not na(bullRR) and bullRR >= minRR and bullScore >= minRuleScore
-bool bearCandidate = barstate.isconfirmed and activeBearFvg and fvgTouched and not consolidationActive and volumeAllowed and (bearSweepRecent or bearSmtRecent) and (bearBosRecent or htfBias == "BEARISH") and not na(bearRR) and bearRR >= minRR and bearScore >= minRuleScore
+// strict_v1: liquidity precedes BOS; FVG forms on BOS or within two bars;
+// retest follows formation. Backend independently checks these declared ages.
+bool sequenceValid = not na(fvgAge) and 1 <= fvgAge and fvgAge <= bosAge and bosAge <= math.min(fvgAge + 2, confirmationMaxBars)
+bool supportedChart = rootSymbol != "UNKNOWN" and (timeframe.period == "5" or timeframe.period == "15" or timeframe.period == "60" or timeframe.period == "240")
+bool commonGate = barstate.isconfirmed and supportedChart and companionAligned and sequenceValid and fvgTouched and not consolidationActive and volumeAllowed
+bool bullCandidate = commonGate and activeBullFvg and (bullSweepRecent or bullSmtRecent) and bullBosRecent and htfBias == "BULLISH" and close > bullStop and close < bullTarget and not na(bullRR) and bullRR >= math.max(1.5, minRR) and bullScore >= minRuleScore
+bool bearCandidate = commonGate and activeBearFvg and (bearSweepRecent or bearSmtRecent) and bearBosRecent and htfBias == "BEARISH" and close < bearStop and close > bearTarget and not na(bearRR) and bearRR >= math.max(1.5, minRR) and bearScore >= minRuleScore
 
 bool chooseBull = bullCandidate and (not bearCandidate or bullScore >= bearScore)
 bool chooseBear = bearCandidate and not chooseBull
@@ -424,7 +427,8 @@ float selectedReward = chooseBull ? bullReward : chooseBear ? bearReward : na
 float selectedRR = chooseBull ? bullRR : chooseBear ? bearRR : na
 bool selectedCandidate = chooseBull or chooseBear
 bool alreadyAlertedThisFvg = not na(alertedFvgBar) and not na(fvgBar) and alertedFvgBar == fvgBar
-bool shouldAlert = enableAlerts and selectedCandidate and not alreadyAlertedThisFvg
+bool newCandidate = selectedCandidate and not alreadyAlertedThisFvg
+bool shouldAlert = enableAlerts and not enableTestWebhookAlert and newCandidate
 
 // A rolling window makes the chart's recent setup frequency visible without
 // changing candidate eligibility or emitting diagnostic alerts.
@@ -437,22 +441,15 @@ int recentCandidates = int(math.sum(selectedCandidate and not alreadyAlertedThis
 var bool testWebhookAlertSent = false
 bool shouldSendTestWebhook = enableAlerts and enableTestWebhookAlert and barstate.isrealtime and barstate.isconfirmed and not testWebhookAlertSent
 
-if selectedCandidate and showProofMarkers
-    label candidateLabel = label.new(bar_index, chooseBull ? low : high, chooseBull ? "SMC BUY CANDIDATE" : "SMC SELL CANDIDATE", style=chooseBull ? label.style_label_up : label.style_label_down, textcolor=color.white, color=chooseBull ? color.new(color.green, 0) : color.new(color.red, 0))
+if newCandidate and showProvisionalTrades
+    string prices = "\nEntry " + f_num(entryPreferred) + " | SL " + f_num(selectedStop) + "\nTP " + f_num(selectedTarget) + " | RR " + f_num(selectedRR)
+    label candidateLabel = label.new(bar_index, chooseBull ? low : high, (chooseBull ? "BUY CANDIDATE" : "SELL CANDIDATE") + prices, style=chooseBull ? label.style_label_up : label.style_label_down, textcolor=color.white, color=chooseBull ? color.new(color.green, 0) : color.new(color.red, 0), size=size.small)
     f_store_label(candidateLabel)
-
-if selectedCandidate and showProvisionalTrades
-    line entryLine = line.new(bar_index, entryPreferred, bar_index + setupExpiryBars, entryPreferred, xloc=xloc.bar_index, extend=extend.none, color=color.new(color.yellow, 0), style=line.style_dotted, width=2)
-    line stopLine = line.new(bar_index, selectedStop, bar_index + setupExpiryBars, selectedStop, xloc=xloc.bar_index, extend=extend.none, color=color.new(color.red, 0), style=line.style_dashed, width=2)
-    line targetLine = line.new(bar_index, selectedTarget, bar_index + setupExpiryBars, selectedTarget, xloc=xloc.bar_index, extend=extend.none, color=color.new(color.lime, 0), style=line.style_dashed, width=2)
-    f_store_line(entryLine)
-    f_store_line(stopLine)
-    f_store_line(targetLine)
 
 // Build and send strict setup_alert.schema.json payloads. Nullable feature fields
 // are emitted as JSON null, while active trade/risk fields are numeric.
 if shouldAlert
-    string setupId = alertSymbol + "_" + timeframe.period + "_" + str.tostring(time) + "_" + str.tostring(bar_index)
+    string setupId = alertSymbol + "_" + timeframe.period + "_" + str.tostring(time) + "_strict_v1"
     string barTimeIso = str.format_time(time, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC")
     string payload = "{"
     payload += "\"schema_version\":\"1.0\","
@@ -481,9 +478,12 @@ if shouldAlert
     payload += "\"displacement\":\"" + displacementState + "\""
     payload += "},"
     payload += "\"session\":{\"name\":\"" + sessionName + "\",\"current_high\":" + f_num(currentSessionHigh) + ",\"current_low\":" + f_num(currentSessionLow) + ",\"completed_high\":" + f_num(completedSessionHigh) + ",\"completed_low\":" + f_num(completedSessionLow) + "},"
-    payload += "\"diagnostics\":{\"atr\":" + f_num(atr) + ",\"mintick\":" + f_num(tick) + ",\"bos_age_bars\":" + f_int(bosAge) + ",\"sweep_age_bars\":" + f_int(sweepAge) + ",\"smt_age_bars\":" + f_int(smtAge) + ",\"notes\":\"Phase 2 Pine MVP payload\"}"
+    payload += "\"diagnostics\":{\"policy_version\":\"strict_v1\",\"bar_close_time\":\"" + str.format_time(time_close, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC") + "\",\"test_mode\":false,\"fvg_retested\":true,\"zone_invalidated\":false,\"companion_aligned\":" + f_bool(companionAligned) + ",\"consolidation_clear_bars\":" + f_int(consolidationClearBars) + ",\"atr\":" + f_num(atr) + ",\"mintick\":" + f_num(tick) + ",\"bos_age_bars\":" + f_int(bosAge) + ",\"sweep_age_bars\":" + f_int(sweepAge) + ",\"smt_age_bars\":" + f_int(smtAge) + ",\"notes\":\"Strict candidate; entry is pending, not filled\"}"
     payload += "}"
     alert(payload, alert.freq_once_per_bar_close)
+
+// Deduplicate chart candidates even when JSON alerts are disabled.
+if newCandidate
     alertedFvgBar := fvgBar
 
 // Emit a deterministic, schema-valid bullish setup solely to prove the
@@ -526,7 +526,7 @@ if shouldSendTestWebhook
     testPayload += "\"displacement\":\"NONE\""
     testPayload += "},"
     testPayload += "\"session\":{\"name\":\"" + sessionName + "\",\"current_high\":" + f_num(currentSessionHigh) + ",\"current_low\":" + f_num(currentSessionLow) + ",\"completed_high\":" + f_num(completedSessionHigh) + ",\"completed_low\":" + f_num(completedSessionLow) + "},"
-    testPayload += "\"diagnostics\":{\"test_mode\":true,\"atr\":" + f_num(atr) + ",\"mintick\":" + f_num(tick) + ",\"notes\":\"Phase 4D webhook delivery test\"}"
+    testPayload += "\"diagnostics\":{\"policy_version\":\"strict_v1\",\"bar_close_time\":\"" + str.format_time(time_close, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC") + "\",\"test_mode\":true,\"atr\":" + f_num(atr) + ",\"mintick\":" + f_num(tick) + ",\"notes\":\"Delivery test only; strict validator must reject\"}"
     testPayload += "}"
     alert(testPayload, alert.freq_once_per_bar_close)
     testWebhookAlertSent := true
@@ -535,14 +535,14 @@ if shouldSendTestWebhook
 float fvgMid = (fvgLow + fvgHigh) / 2.0
 bool bullFvgMitigated = activeBullFvg and bar_index > fvgBar and low <= fvgMid
 bool bearFvgMitigated = activeBearFvg and bar_index > fvgBar and high >= fvgMid
-if bullFvgMitigated or bearFvgMitigated or fvgExpired
+if barstate.isconfirmed and (bullFvgMitigated or bearFvgMitigated or fvgExpired or zoneInvalidated)
     fvgState := (bullFvgMitigated or bearFvgMitigated) ? "MITIGATED" : "NONE"
 
 // -----------------------------------------------------------------------------+
 // The table exposes each hard gate for the currently active FVG, including
 // near misses. Counts cover the most recent 100 bars loaded on the chart.
 // -----------------------------------------------------------------------------+
-var table diag = table.new(position.top_right, 2, 20, frame_color=color.new(color.white, 55), frame_width=1, border_width=1)
+var table diag = table.new(position.top_right, 2, panelMode == "Compact" ? 7 : 20, frame_color=color.new(color.white, 55), frame_width=1, border_width=1)
 
 f_table_row(int row, string name, string value) =>
     table.cell(diag, 0, row, name, text_color=color.white, bgcolor=color.new(color.black, 10), text_size=size.small)
@@ -554,26 +554,36 @@ if showDiagnostics and barstate.islast
     string consolidationDisplay = consolidationActive ? "BLOCKING" : "INACTIVE"
     bool hasDirectionalFvg = activeBullFvg or activeBearFvg
     bool liquidityGate = activeBullFvg ? bullSweepRecent or bullSmtRecent : activeBearFvg ? bearSweepRecent or bearSmtRecent : false
-    bool structureGate = activeBullFvg ? bullBosRecent or htfBias == "BULLISH" : activeBearFvg ? bearBosRecent or htfBias == "BEARISH" : false
+    bool structureGate = activeBullFvg ? bullBosRecent and htfBias == "BULLISH" : activeBearFvg ? bearBosRecent and htfBias == "BEARISH" : false
     float directionalRR = activeBullFvg ? bullRR : activeBearFvg ? bearRR : na
     int directionalScore = activeBullFvg ? bullScore : activeBearFvg ? bearScore : 0
-    f_table_row(0, "BOS", bosState)
-    f_table_row(1, "FVG", fvgDisplay)
-    f_table_row(2, "Sweep", sweepState)
-    f_table_row(3, "SMT", smtState)
-    f_table_row(4, "RVOL", volumeState)
-    f_table_row(5, "Consolidation", consolidationDisplay)
-    f_table_row(6, "HTF Bias", htfBias)
-    f_table_row(7, "HTF TF", effectiveHtfTimeframe)
-    f_table_row(8, "Session", sessionName)
-    f_table_row(9, "FVG Active", hasDirectionalFvg ? "PASS" : "BLOCK")
-    f_table_row(10, "FVG Retest", fvgTouched ? "PASS" : "BLOCK")
-    f_table_row(11, "Sweep/SMT", liquidityGate ? "PASS" : "BLOCK")
-    f_table_row(12, "BOS/HTF", structureGate ? "PASS" : "BLOCK")
-    f_table_row(13, "Volume", volumeAllowed ? "PASS" : "BLOCK")
-    f_table_row(14, "Not Paused", not consolidationActive ? "PASS" : "BLOCK")
-    f_table_row(15, "RR", not na(directionalRR) and directionalRR >= minRR ? "PASS" : "BLOCK")
-    f_table_row(16, "Score", str.tostring(directionalScore) + "/" + str.tostring(minRuleScore))
-    f_table_row(17, "Retests/Setups 100", str.tostring(recentFvgRetests) + "/" + str.tostring(recentCandidates))
-    f_table_row(18, "Candidate", candidateDirection)
-    f_table_row(19, "Bar", barstate.isconfirmed ? "CLOSED" : "OPEN")
+    string blocker = not supportedChart ? "Unsupported chart" : not barstate.isconfirmed ? "Bar open" : not companionAligned ? "Companion data" : consolidationActive ? "Consolidation" : not hasDirectionalFvg ? "No active FVG" : not fvgTouched ? "Await retest" : not sequenceValid ? "Sequence/age" : not structureGate ? "BOS + HTF" : not liquidityGate ? "Liquidity" : not volumeAllowed ? "Thin volume" : directionalScore < minRuleScore ? "Score" : "Risk / duplicate"
+    if panelMode == "Compact"
+        f_table_row(0, "SMC strict_v1", candidateDirection == "NONE" ? "WAIT" : candidateDirection)
+        f_table_row(1, "Gate", selectedCandidate ? "PASS" : blocker)
+        f_table_row(2, "Score", hasDirectionalFvg ? str.tostring(directionalScore) + "/100 (min " + str.tostring(minRuleScore) + ")" : "No setup")
+        f_table_row(3, "HTF " + effectiveHtfTimeframe, htfBias)
+        f_table_row(4, "Session", sessionName)
+        f_table_row(5, "Setups / 100 bars", str.tostring(recentCandidates))
+        f_table_row(6, "News / final decision", "Backend only")
+    else
+        f_table_row(0, "BOS", bosState)
+        f_table_row(1, "FVG", fvgDisplay)
+        f_table_row(2, "Sweep", sweepState)
+        f_table_row(3, "SMT", smtState)
+        f_table_row(4, "RVOL", volumeState)
+        f_table_row(5, "Consolidation", consolidationDisplay)
+        f_table_row(6, "HTF Bias", htfBias)
+        f_table_row(7, "HTF TF", effectiveHtfTimeframe)
+        f_table_row(8, "Session", sessionName)
+        f_table_row(9, "FVG Active", hasDirectionalFvg ? "PASS" : "BLOCK")
+        f_table_row(10, "FVG Retest", fvgTouched ? "PASS" : "BLOCK")
+        f_table_row(11, "Sweep/SMT", liquidityGate ? "PASS" : "BLOCK")
+        f_table_row(12, "BOS + HTF", structureGate ? "PASS" : "BLOCK")
+        f_table_row(13, "Sequence", sequenceValid ? "PASS" : "BLOCK")
+        f_table_row(14, "Companion", companionAligned ? "PASS" : "BLOCK")
+        f_table_row(15, "RR", not na(directionalRR) and directionalRR >= minRR ? "PASS" : "BLOCK")
+        f_table_row(16, "Score / minimum", str.tostring(directionalScore) + "/100 | " + str.tostring(minRuleScore))
+        f_table_row(17, "Retests/Setups 100", str.tostring(recentFvgRetests) + "/" + str.tostring(recentCandidates))
+        f_table_row(18, "Candidate", candidateDirection)
+        f_table_row(19, "Gate", selectedCandidate ? "PASS" : blocker)
