@@ -2,10 +2,11 @@
 
 ## Status and Scope
 
-Implemented as an opt-in backend worker. Production still uses its previous
-manual calendar until this branch is merged/deployed and Render's environment
-is explicitly changed. No live alert, Pine code, secret or production database
-was changed during implementation.
+Deployed and enabled on November 9, 2026, after PR #5 was merged. The first
+Render-side fetch failed with `HTTPStatusError`; no successful automatic refresh
+has yet been verified. Production correctly reports ES/NQ UNKNOWN and blocks
+approvals. This is a deployment blocker, not a successful feed cutover. See
+`docs/timing_session_fixes_2026_11_09.md` for rollout evidence and limitations.
 
 The source is the [Forex Factory calendar's Weekly Export](https://www.forexfactory.com/calendar),
 which links to the public [JSON feed](https://nfs.faireconomy.media/ff_calendar_thisweek.json).
@@ -36,7 +37,8 @@ NEWS_FETCH_TIMEOUT_SECONDS=10
 
 Keep all existing database, webhook, dashboard and OpenAI settings unchanged.
 No new secret is required. The default provider remains mock for new local
-installs, while existing production `NEWS_PROVIDER=manual` is preserved.
+installs. Production now uses `NEWS_PROVIDER=forexfactory` with strict coverage
+required; failure never falls back to mock news or renews the manual snapshot.
 
 The lifespan-managed thread checks on process startup and approximately hourly.
 A durable cooldown avoids repeated fetches on rapid restarts. Use the existing
@@ -111,6 +113,10 @@ These counts are observations, not permanent expectations or completeness proof.
 Automated tests cover publisher freshness, failed refresh retention, cooldown
 after restart, DST/week rollover, atomic rollback, HTTP failures, parsing failures,
 live-mode opt-in lifecycle, approved/blackout/stale webhook decisions and UI output.
-Final suite: 153 passed, zero failed, with one existing Starlette/httpx deprecation
-warning. Tests use mock HTTP/provider responses; the live source probe above is
-separate. Production enablement and a deployed worker refresh remain unverified.
+The original implementation suite had 153 passing tests. The November 9 timing
+and deployment fixes bring the suite to 167 passed, zero failed, with one existing
+Starlette/httpx deprecation warning. Tests use mock HTTP/provider responses;
+live source probes are separate. Production enablement is verified, but a
+successful hosted refresh is not. Subsequent publisher HTTP errors now retain a
+safe `publisher_http_<status>` code without response bodies or URLs. The initial
+legacy `HTTPStatusError` record cannot retrospectively identify its status code.
