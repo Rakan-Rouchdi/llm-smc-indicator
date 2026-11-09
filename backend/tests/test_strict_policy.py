@@ -6,6 +6,7 @@ from app.config import get_settings
 from app.schemas import SetupAlert, LLMTradeDecision
 from app.validators import validate_llm_decision, ValidationPolicy
 from app.worker import DecisionWorker
+from app.eligibility import setup_rejections
 
 
 @pytest.mark.parametrize("path,value,reason", [
@@ -96,3 +97,42 @@ def test_news_is_rechecked_after_provider(client, fresh_setup_payload, monkeypat
     assert decision["llm_decision"]["action"] == "BUY"
     assert decision["final_action"] == "NO_TRADE"
     assert "News blackout active" in decision["validation_rejection_reason"]
+
+
+def session_revision(payload):
+    closed = datetime.fromisoformat(payload["diagnostics"]["bar_close_time"].replace("Z", "+00:00"))
+    payload["diagnostics"].update(detector_revision="timing_sessions_v2", session_data_ready=True,
+        session_resolution="1", session_as_of_ms=int(closed.timestamp()*1000), sweep_session_end_ms=None)
+    return payload
+
+
+def test_new_session_revision_accepts_complete_coverage(valid_setup_payload):
+    setup = SetupAlert.model_validate(session_revision(valid_setup_payload))
+    assert setup_rejections(setup) == []
+
+
+@pytest.mark.parametrize("field,value,reason", [
+    ("session_data_ready", False, "one-minute"),
+    ("session_data_ready", None, "one-minute"),
+    ("session_resolution", "60", "one-minute"),
+    ("session_as_of_ms", None, "candle close"),
+    ("session_as_of_ms", True, "candle close"),
+    ("session_as_of_ms", 1, "candle close"),
+    ("sweep_session_end_ms", 9999999999999, "predate"),
+    ("sweep_session_end_ms", "future", "predate"),
+])
+def test_new_session_revision_fails_closed(valid_setup_payload, field, value, reason):
+    session_revision(valid_setup_payload)["diagnostics"][field] = value
+    errors = setup_rejections(SetupAlert.model_validate(valid_setup_payload))
+    assert any(reason in error for error in errors)
+
+
+def test_incomplete_session_blocks_before_llm(client, fresh_setup_payload, monkeypatch):
+    session_revision(fresh_setup_payload)["diagnostics"]["session_data_ready"] = False
+    monkeypatch.setattr("app.workflow.get_llm_provider", lambda _: pytest.fail("Must not call LLM"))
+    assert client.post("/webhook/tradingview?secret=test-secret", json=fresh_setup_payload).status_code == 202
+    assert DecisionWorker(get_settings()).run_once()
+    decision = client.get("/decisions/latest").json()["decision"]
+    assert decision["model"] == "deterministic-preflight"
+    assert decision["final_action"] == "NO_TRADE"
+    assert "one-minute" in decision["validation_rejection_reason"]
