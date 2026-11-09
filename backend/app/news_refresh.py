@@ -117,7 +117,9 @@ def fetch_snapshot(now: datetime, settings: Settings) -> FeedSnapshot:
     with httpx.Client(timeout=settings.news_fetch_timeout_seconds, follow_redirects=False) as client:
         deadline = clock.monotonic() + settings.news_fetch_timeout_seconds * 2
         with client.stream("GET", FEED_URL, headers={"Accept": "application/json"}) as response:
-            response.raise_for_status()
+            if response.status_code != 200:
+                # Preserve the actionable status, never the response body or URL.
+                raise CalendarFeedError(f"publisher_http_{response.status_code}")
             if response.status_code != 200 or "application/json" not in response.headers.get("content-type", ""):
                 raise CalendarFeedError("unexpected_feed_response")
             body = bytearray()

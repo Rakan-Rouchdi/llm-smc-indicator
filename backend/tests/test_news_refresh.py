@@ -207,13 +207,14 @@ def test_refresh_is_opt_in(client, monkeypatch):
     assert client.app.state.calendar_worker is None
 
 
-@pytest.mark.parametrize("status,content_type", [(302, "application/json"), (429, "application/json"),
+@pytest.mark.parametrize("status,content_type", [(302, "application/json"), (403, "application/json"), (429, "application/json"),
     (503, "application/json"), (200, "text/html")])
 def test_transport_rejects_redirect_error_and_html(monkeypatch, status, content_type):
     client_type = httpx.Client
     transport = httpx.MockTransport(lambda _: httpx.Response(status, headers={"content-type": content_type}, content=b"[]"))
     monkeypatch.setattr("app.news_refresh.httpx.Client", lambda **kwargs: client_type(transport=transport, **kwargs))
-    with pytest.raises((CalendarFeedError, httpx.HTTPStatusError)):
+    expected = f"publisher_http_{status}" if status != 200 else "unexpected_feed_response"
+    with pytest.raises(CalendarFeedError, match=f"^{expected}$"):
         fetch_snapshot(NOW, settings())
 
 
