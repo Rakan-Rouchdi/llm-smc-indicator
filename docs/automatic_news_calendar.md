@@ -3,8 +3,9 @@
 ## Status and Scope
 
 Deployed and enabled on November 9, 2026, after PR #5 was merged. The first
-Render-side fetch failed with `HTTPStatusError`; no successful automatic refresh
-has yet been verified. Production correctly reports ES/NQ UNKNOWN and blocks
+Render-side fetch failed with `HTTPStatusError`; a controlled retry confirmed
+`publisher_http_429` (rate limiting). No successful automatic refresh has yet
+been verified. Production correctly reports ES/NQ UNKNOWN and blocks
 approvals. This is a deployment blocker, not a successful feed cutover. See
 `docs/timing_session_fixes_2026_11_09.md` for rollout evidence and limitations.
 

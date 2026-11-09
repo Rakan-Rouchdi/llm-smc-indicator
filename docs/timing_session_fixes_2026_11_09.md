@@ -123,16 +123,23 @@ Effective configuration: `NEWS_PROVIDER=forexfactory`,
 The first production refresh at 16:21:41 UTC failed with `HTTPStatusError`.
 The publisher worked locally earlier (37 USD events, 23 elevated HIGH,
 publication 15:42:15 UTC), but that does not prove reachability from Render.
-The original error did not retain its status, so its exact cause is unknown;
-do not assume an IP ban or rate limit. Subsequent failures retain a safe numeric
-HTTP status. No alternate proxy, weakened freshness policy or retry loop was
-introduced. Durable hourly cooldown survives restarts.
+The original error did not retain its status. At 21:17:02 UTC a controlled
+retry with the improved diagnostic code confirmed `publisher_http_429`.
+The publisher is rate-limiting the hosted request; whether shared egress or
+another publisher policy causes that limit is not established. The refresh
+interval was temporarily set to 15 minutes for this one diagnostic retry and
+restored to 60 immediately afterward. No proxy, alternate hostname or weakened
+freshness policy was used to evade the limit. Durable cooldown survives restarts.
 
 Observed deployed result: database OK, decision worker running, zero failed
 jobs, news ES UNKNOWN/NQ UNKNOWN, readiness false, refresh enabled but no success.
 Public `/health` returns 200; unauthenticated `/dashboard` returns 401;
 authenticated dashboard renders the news failure and historical-decision warning.
-The latest stored BUY is the November 8 delivery test, not a new natural setup.
+After 18:02 UTC the dashboard's separate operator alert observation also aged
+past 24 hours and became UNKNOWN. This is not proof that TradingView disabled
+the alert: the read-only MCP listing showed it active. The dashboard intentionally
+does not claim a live TradingView poll. The latest stored BUY is the November 8
+delivery test, not a new natural setup.
 No test webhook or paid OpenAI call was made during this rollout.
 
 **Automatic refresh is enabled but not yet operationally verified.** Approval
