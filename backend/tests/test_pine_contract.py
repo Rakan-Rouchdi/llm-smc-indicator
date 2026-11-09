@@ -36,3 +36,8 @@ def test_pine_timing_session_and_diagnostic_contract():
     assert 'f_event_status(smtState, smtAge' in source
     assert 'f_retire_box(activeFvgBox, fvgState)' in source
     assert 'f_retire_box(activeFvgBox, "SUPERSEDED")' in source
+
+
+def test_table_is_not_hidden_behind_price_candles():
+    source = (Path(__file__).resolve().parents[2] / "pine/smc_llm_candidate_detector.pine").read_text()
+    assert "behind_chart=false" in source

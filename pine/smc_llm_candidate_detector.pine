@@ -1,5 +1,5 @@
 //@version=6
-indicator("SMC LLM Candidate Detector", overlay=true, max_labels_count=500, max_boxes_count=300, max_lines_count=300)
+indicator("SMC LLM Candidate Detector", overlay=true, behind_chart=false, max_labels_count=500, max_boxes_count=300, max_lines_count=300)
 
 // Phase 2 MVP notes:
 // - This indicator emits provisional, deterministic setup facts only.
