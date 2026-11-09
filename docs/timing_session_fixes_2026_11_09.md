@@ -107,7 +107,9 @@ The matrix screenshots exposed candles painting over the diagnostic panel,
 leading to revision 18. The Mac then locked, preventing the final native visual
 order check and closing the Pine editor. The last compact capture contains the
 open editor and is not evidence of a clean final layout. A final screenshot
-after unlocking remains required; do not claim that last visual check passed.
+after unlocking was still required at that point. The follow-up report records
+its completion at approximately 22:59 UTC: revision 19 Compact view, clean panel,
+editor closed, debug/test modes off and layout saved.
 
 ## Hosted Deployment
 
@@ -184,7 +186,7 @@ Read-only alert listing still showed exactly one active alert, ID `6022530375`,
 revision 15, NQ 240, test false, last_fired null. Its exact existing expiration
 is January 7, 2027 at 18:00:21 UTC; the proposal preserves the approved 18:00
 minute. Chart edits do not update that server-side snapshot. No alert was
-created, deleted or modified. News fetch success and the final native visual
-check should be resolved before approving replacement.
+created, deleted or modified. The final native visual check is now complete;
+news fetch success remains unresolved before approving replacement.
 
 No trades, broker connections, replay or automatic orders are part of this work.

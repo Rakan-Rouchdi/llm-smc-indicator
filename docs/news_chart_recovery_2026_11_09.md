@@ -86,7 +86,18 @@ test false, and the editor was closed; the layout reports All changes saved.
 However, captures made while locked retained stale canvas content despite the
 updated inputs. Files with `compact_final`, `compact_saved` or `clean` in their
 names from that locked period are NOT valid evidence of the final compact view.
-One final unlocked compact screenshot remains outstanding.
+After the user unlocked the Mac again, the final Compact view was visually
+verified at approximately 22:59 UTC: eight readable rows, no debug labels/zones,
+editor closed, test mode false, JSON alerts true, revision 19, NQ 4h, and native
+layout status All changes saved. The table showed WAIT / Await retest, CLOSED,
+55/100 (minimum 75), daily HTF NEUTRAL and OFF_HOURS. Native inspection confirmed
+the temporary TradingView table-hover controls disappeared and did not obscure
+the final panel. The final-layout blocker is resolved.
+
+Final evidence: `news_recovery_20261109_NQ4h_verified_compact.png` in the same
+screenshot directory. Earlier locked-period captures remain invalid evidence;
+they were not silently overwritten. The alert was rechecked read-only and
+remains exactly one active revision-15 alert with test mode false.
 
 ## Alert And Backend Safety
 
