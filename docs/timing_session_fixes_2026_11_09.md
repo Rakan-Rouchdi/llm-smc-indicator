@@ -1,5 +1,9 @@
 # Timing, Session And Diagnostic Corrections
 
+Follow-up: `docs/news_chart_recovery_2026_11_09.md` records revision 19's
+opaque-border fix, the completed eight-chart visual matrix, durable publisher
+backoff deployment and the still-unresolved free-feed HTTP 429.
+
 ## Implementation
 
 - Prior-day high/low use a one-day offset with `barmerge.lookahead_on`, so the
@@ -157,7 +161,7 @@ Proposed replacement configuration, not yet applied:
 - Symbol/feed: `CME_MINI_DL:NQ1!` (current account's delayed NQ continuous feed)
 - Timeframe: `240` (4h)
 - Condition: `SMC LLM Candidate Detector -> Any alert() function call`
-- Script snapshot: corrected detector, revision 18, `timing_sessions_v2`
+- Script snapshot: corrected detector, revision 19, `timing_sessions_v2`
 - Inputs: score 75; age limit 6; JSON alerts true; test webhook false; Compact;
   zones/proof markers false; candidate labels true; all other existing defaults.
 - Message: script-generated `alert()` JSON; no pasted static payload.
