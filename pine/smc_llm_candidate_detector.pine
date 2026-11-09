@@ -614,7 +614,8 @@ if barstate.isconfirmed and (fvgState == "BULLISH" or fvgState == "BEARISH") and
 // The table exposes each hard gate for the currently active FVG, including
 // near misses. Counts cover the most recent 100 bars loaded on the chart.
 // -----------------------------------------------------------------------------+
-var table diag = table.new(position.top_right, 2, panelMode == "Compact" ? 8 : 20, frame_color=color.new(color.white, 55), frame_width=1, border_width=1)
+// Opaque cell borders prevent price wicks bleeding through the one-pixel gaps.
+var table diag = table.new(position.top_right, 2, panelMode == "Compact" ? 8 : 20, frame_color=color.rgb(110, 113, 118), frame_width=1, border_color=color.rgb(45, 48, 54), border_width=1)
 
 f_table_row(int row, string name, string value) =>
     table.cell(diag, 0, row, name, text_color=color.white, bgcolor=color.rgb(26, 29, 34), text_size=size.small)
