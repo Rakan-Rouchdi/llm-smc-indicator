@@ -65,8 +65,13 @@ f_int(int value) =>
 f_bool(bool value) =>
     value ? "true" : "false"
 
+f_event_status(string state, int age, bool eligible) =>
+    state == "NONE" or na(age) ? "NONE" : state + " " + str.tostring(age) + "b " + (eligible ? "READY" : age > confirmationMaxBars ? "EXPIRED" : "ORDER BLOCK")
+
 f_state_color(string value) =>
-    value == "BULLISH" ? color.new(color.lime, 0) :
+    str.contains(value, "EXPIRED") or str.contains(value, "ORDER BLOCK") ? color.orange :
+     str.contains(value, "READY") ? color.lime :
+     value == "BULLISH" ? color.new(color.lime, 0) :
      value == "BEARISH" ? color.new(color.red, 0) :
      value == "PASS" ? color.new(color.lime, 0) :
      value == "BLOCK" ? color.new(color.red, 0) :
@@ -102,38 +107,99 @@ f_store_label(label item) =>
         label old = array.shift(proofLabels)
         label.delete(old)
 
+f_retire_box(box item, string reason) =>
+    if not na(item)
+        box.set_right(item, bar_index)
+        box.set_bgcolor(item, color.new(color.gray, 94))
+        box.set_border_color(item, color.new(color.gray, 75))
+        box.set_text(item, reason)
+        box.set_text_color(item, color.silver)
+        box.set_text_size(item, size.tiny)
+
 // -----------------------------------------------------------------------------+
-// Session context in New York time.
+// Exact session windows from CLOSED one-minute bars, in New York time.
+// Chart bars may straddle boundaries; their full high/low must never be used.
+// Timestamp construction (rather than fixed UTC offsets) handles DST.
 // -----------------------------------------------------------------------------+
-bool inAsia = not na(time(timeframe.period, "1800-2359", "America/New_York"))
-bool inLondon = not na(time(timeframe.period, "0200-0500", "America/New_York"))
-bool inNyAm = not na(time(timeframe.period, "0830-1130", "America/New_York"))
-bool inNyPm = not na(time(timeframe.period, "1330-1600", "America/New_York"))
-string sessionName = inAsia ? "ASIA" : inLondon ? "LONDON" : inNyAm ? "NY_AM" : inNyPm ? "NY_PM" : "OFF_HOURS"
+f_session_window(int at) =>
+    string tz = "America/New_York"
+    int minuteOfDay = hour(at, tz) * 60 + minute(at, tz)
+    string name = minuteOfDay >= 1080 ? "ASIA" : minuteOfDay >= 120 and minuteOfDay < 300 ? "LONDON" : minuteOfDay >= 510 and minuteOfDay < 690 ? "NY_AM" : minuteOfDay >= 810 and minuteOfDay < 960 ? "NY_PM" : "OFF_HOURS"
+    int startMinute = name == "ASIA" ? 1080 : name == "LONDON" ? 120 : name == "NY_AM" ? 510 : name == "NY_PM" ? 810 : 0
+    int endMinute = name == "ASIA" ? 1440 : name == "LONDON" ? 300 : name == "NY_AM" ? 690 : name == "NY_PM" ? 960 : 0
+    int starts = timestamp(tz, year(at, tz), month(at, tz), dayofmonth(at, tz), int(startMinute / 60), startMinute % 60)
+    int ends = timestamp(tz, year(at, tz), month(at, tz), dayofmonth(at, tz), int(endMinute / 60), endMinute % 60)
+    [name, starts, ends]
 
-var string priorSessionName = "OFF_HOURS"
-var float currentSessionHigh = na
-var float currentSessionLow = na
-var float completedSessionHigh = na
-var float completedSessionLow = na
+// Kept as one stateful helper so the actual Pine code can be exercised with
+// synthetic minute arrays in the regression probe, without live alerts.
+f_session_context(array<int> minuteTimes, array<int> minuteCloses, array<float> minuteHighs, array<float> minuteLows, int chartOpen, int chartClose, int cutoff, bool realtime, bool confirmed) =>
+    var int trackedSessionStart = na
+    var int trackedSessionEnd = na
+    var int trackedMinuteClose = na
+    var float trackedSessionHigh = na
+    var float trackedSessionLow = na
+    var bool trackedSessionComplete = false
+    var float completedSessionHigh = na
+    var float completedSessionLow = na
+    var int completedSessionEnd = na
+    // Freeze the sweep pool BEFORE ingesting this chart bar. A session finishing
+    // inside a 4h candle cannot be swept retroactively by that same candle's wick.
+    float sweepSessionHigh = completedSessionHigh
+    float sweepSessionLow = completedSessionLow
+    int sweepSessionEnd = completedSessionEnd
+    string sessionName = "OFF_HOURS"
+    float currentSessionHigh = na
+    float currentSessionLow = na
+    int sessionAsOf = na
+    bool minuteCoverageComplete = true
+    int expectedMinute = chartOpen
+    int minuteCount = array.size(minuteTimes)
+    if minuteCount > 0
+        for i = 0 to minuteCount - 1
+            int at = array.get(minuteTimes, i)
+            int endsAt = array.get(minuteCloses, i)
+            // Never incorporate an unfinished minute on a realtime chart bar.
+            if endsAt <= chartClose and (not realtime or endsAt <= cutoff)
+                minuteCoverageComplete := minuteCoverageComplete and at == expectedMinute and endsAt - at == 60000
+                expectedMinute := endsAt
+                sessionAsOf := endsAt
+                [name, starts, ends] = f_session_window(at)
+                sessionName := name
+                if name != "OFF_HOURS"
+                    if na(trackedSessionStart) or starts != trackedSessionStart
+                        trackedSessionStart := starts
+                        trackedSessionEnd := ends
+                        trackedSessionHigh := array.get(minuteHighs, i)
+                        trackedSessionLow := array.get(minuteLows, i)
+                        trackedSessionComplete := at == starts
+                    else
+                        trackedSessionComplete := trackedSessionComplete and at == trackedMinuteClose
+                        trackedSessionHigh := math.max(trackedSessionHigh, array.get(minuteHighs, i))
+                        trackedSessionLow := math.min(trackedSessionLow, array.get(minuteLows, i))
+                    trackedMinuteClose := endsAt
+                    currentSessionHigh := trackedSessionComplete ? trackedSessionHigh : na
+                    currentSessionLow := trackedSessionComplete ? trackedSessionLow : na
+                    if endsAt == trackedSessionEnd
+                        // A partial/missing session invalidates the prior pool too.
+                        completedSessionHigh := trackedSessionComplete ? trackedSessionHigh : na
+                        completedSessionLow := trackedSessionComplete ? trackedSessionLow : na
+                        completedSessionEnd := trackedSessionComplete ? endsAt : na
+                else
+                    currentSessionHigh := na
+                    currentSessionLow := na
+    // Fail closed outside TradingView's intrabar history or with missing minutes.
+    // In live diagnostics, partial current bars are explicitly PREVIEW, not confirmed.
+    bool sessionDataReady = not na(sessionAsOf) and minuteCoverageComplete and (not confirmed or sessionAsOf == chartClose)
+    [sessionName, currentSessionHigh, currentSessionLow, completedSessionHigh, completedSessionLow, sweepSessionHigh, sweepSessionLow, sweepSessionEnd, sessionAsOf, sessionDataReady]
 
-bool namedSession = sessionName != "OFF_HOURS"
-bool newNamedSession = namedSession and sessionName != priorSessionName
-bool leavingNamedSession = not namedSession and priorSessionName != "OFF_HOURS"
+[minuteTimes, minuteCloses, minuteHighs, minuteLows] = request.security_lower_tf(syminfo.tickerid, "1", [time, time_close, high, low], ignore_invalid_timeframe=true)
+[sessionName, currentSessionHigh, currentSessionLow, completedSessionHigh, completedSessionLow, sweepSessionHigh, sweepSessionLow, sweepSessionEnd, sessionAsOf, sessionDataReady] = f_session_context(minuteTimes, minuteCloses, minuteHighs, minuteLows, time, time_close, timenow, barstate.isrealtime, barstate.isconfirmed)
 
-if newNamedSession or leavingNamedSession
-    completedSessionHigh := currentSessionHigh
-    completedSessionLow := currentSessionLow
-    currentSessionHigh := namedSession ? high : na
-    currentSessionLow := namedSession ? low : na
-else if namedSession
-    currentSessionHigh := na(currentSessionHigh) ? high : math.max(currentSessionHigh, high)
-    currentSessionLow := na(currentSessionLow) ? low : math.min(currentSessionLow, low)
-
-priorSessionName := sessionName
-
-float priorDayHigh = request.security(syminfo.tickerid, "D", high[1])
-float priorDayLow = request.security(syminfo.tickerid, "D", low[1])
+// Offset + lookahead_on maps the PREVIOUS completed day from the start of each
+// new daily interval, identically on historical and realtime intraday bars.
+float priorDayHigh = request.security(syminfo.tickerid, "D", high[1], lookahead=barmerge.lookahead_on)
+float priorDayLow = request.security(syminfo.tickerid, "D", low[1], lookahead=barmerge.lookahead_on)
 
 // -----------------------------------------------------------------------------+
 // Swing structure and Break of Structure.
@@ -199,6 +265,8 @@ var box activeFvgBox = na
 var int alertedFvgBar = na
 
 if newBullFvg
+    f_retire_box(activeFvgBox, "SUPERSEDED")
+    activeFvgBox := na
     fvgState := "BULLISH"
     fvgLow := high[2]
     fvgHigh := low
@@ -208,6 +276,8 @@ if newBullFvg
         f_store_box(activeFvgBox)
 
 if newBearFvg
+    f_retire_box(activeFvgBox, "SUPERSEDED")
+    activeFvgBox := na
     fvgState := "BEARISH"
     fvgLow := high
     fvgHigh := low[2]
@@ -241,8 +311,8 @@ string watchedHighPool = "NONE"
 if not na(priorDayHigh)
     watchedHigh := priorDayHigh
     watchedHighPool := "PRIOR_DAY_HIGH"
-if not na(completedSessionHigh)
-    watchedHigh := completedSessionHigh
+if not na(sweepSessionHigh) and sweepSessionEnd <= time
+    watchedHigh := sweepSessionHigh
     watchedHighPool := "SESSION_HIGH"
 if not na(equalHighLevel)
     watchedHigh := equalHighLevel
@@ -253,8 +323,8 @@ string watchedLowPool = "NONE"
 if not na(priorDayLow)
     watchedLow := priorDayLow
     watchedLowPool := "PRIOR_DAY_LOW"
-if not na(completedSessionLow)
-    watchedLow := completedSessionLow
+if not na(sweepSessionLow) and sweepSessionEnd <= time
+    watchedLow := sweepSessionLow
     watchedLowPool := "SESSION_LOW"
 if not na(equalLowLevel)
     watchedLow := equalLowLevel
@@ -412,7 +482,7 @@ int bearScore = int(math.min(100, math.max(0, bearScoreRaw)))
 // retest follows formation. Backend independently checks these declared ages.
 bool sequenceValid = not na(fvgAge) and 1 <= fvgAge and fvgAge <= bosAge and bosAge <= math.min(fvgAge + 2, confirmationMaxBars)
 bool supportedChart = rootSymbol != "UNKNOWN" and (timeframe.period == "5" or timeframe.period == "15" or timeframe.period == "60" or timeframe.period == "240")
-bool commonGate = barstate.isconfirmed and supportedChart and companionAligned and sequenceValid and fvgTouched and not consolidationActive and volumeAllowed
+bool commonGate = barstate.isconfirmed and supportedChart and sessionDataReady and companionAligned and sequenceValid and fvgTouched and not consolidationActive and volumeAllowed
 bool bullCandidate = commonGate and activeBullFvg and (bullSweepRecent or bullSmtRecent) and bullBosRecent and htfBias == "BULLISH" and close > bullStop and close < bullTarget and not na(bullRR) and bullRR >= math.max(1.5, minRR) and bullScore >= minRuleScore
 bool bearCandidate = commonGate and activeBearFvg and (bearSweepRecent or bearSmtRecent) and bearBosRecent and htfBias == "BEARISH" and close < bearStop and close > bearTarget and not na(bearRR) and bearRR >= math.max(1.5, minRR) and bearScore >= minRuleScore
 
@@ -478,7 +548,7 @@ if shouldAlert
     payload += "\"displacement\":\"" + displacementState + "\""
     payload += "},"
     payload += "\"session\":{\"name\":\"" + sessionName + "\",\"current_high\":" + f_num(currentSessionHigh) + ",\"current_low\":" + f_num(currentSessionLow) + ",\"completed_high\":" + f_num(completedSessionHigh) + ",\"completed_low\":" + f_num(completedSessionLow) + "},"
-    payload += "\"diagnostics\":{\"policy_version\":\"strict_v1\",\"bar_close_time\":\"" + str.format_time(time_close, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC") + "\",\"test_mode\":false,\"fvg_retested\":true,\"zone_invalidated\":false,\"companion_aligned\":" + f_bool(companionAligned) + ",\"consolidation_clear_bars\":" + f_int(consolidationClearBars) + ",\"atr\":" + f_num(atr) + ",\"mintick\":" + f_num(tick) + ",\"bos_age_bars\":" + f_int(bosAge) + ",\"sweep_age_bars\":" + f_int(sweepAge) + ",\"smt_age_bars\":" + f_int(smtAge) + ",\"notes\":\"Strict candidate; entry is pending, not filled\"}"
+    payload += "\"diagnostics\":{\"policy_version\":\"strict_v1\",\"detector_revision\":\"timing_sessions_v2\",\"session_data_ready\":" + f_bool(sessionDataReady) + ",\"session_resolution\":\"1\",\"session_as_of_ms\":" + f_int(sessionAsOf) + ",\"sweep_session_end_ms\":" + f_int(sweepSessionEnd) + ",\"bar_close_time\":\"" + str.format_time(time_close, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC") + "\",\"test_mode\":false,\"fvg_retested\":true,\"zone_invalidated\":false,\"companion_aligned\":" + f_bool(companionAligned) + ",\"consolidation_clear_bars\":" + f_int(consolidationClearBars) + ",\"atr\":" + f_num(atr) + ",\"mintick\":" + f_num(tick) + ",\"bos_age_bars\":" + f_int(bosAge) + ",\"sweep_age_bars\":" + f_int(sweepAge) + ",\"smt_age_bars\":" + f_int(smtAge) + ",\"notes\":\"Strict candidate; entry is pending, not filled\"}"
     payload += "}"
     alert(payload, alert.freq_once_per_bar_close)
 
@@ -535,55 +605,62 @@ if shouldSendTestWebhook
 float fvgMid = (fvgLow + fvgHigh) / 2.0
 bool bullFvgMitigated = activeBullFvg and bar_index > fvgBar and low <= fvgMid
 bool bearFvgMitigated = activeBearFvg and bar_index > fvgBar and high >= fvgMid
-if barstate.isconfirmed and (bullFvgMitigated or bearFvgMitigated or fvgExpired or zoneInvalidated)
-    fvgState := (bullFvgMitigated or bearFvgMitigated) ? "MITIGATED" : "NONE"
+if barstate.isconfirmed and (fvgState == "BULLISH" or fvgState == "BEARISH") and (bullFvgMitigated or bearFvgMitigated or fvgExpired or zoneInvalidated)
+    fvgState := zoneInvalidated ? "INVALIDATED" : fvgExpired ? "EXPIRED" : "MITIGATED"
+    f_retire_box(activeFvgBox, fvgState)
+    activeFvgBox := na
 
 // -----------------------------------------------------------------------------+
 // The table exposes each hard gate for the currently active FVG, including
 // near misses. Counts cover the most recent 100 bars loaded on the chart.
 // -----------------------------------------------------------------------------+
-var table diag = table.new(position.top_right, 2, panelMode == "Compact" ? 7 : 20, frame_color=color.new(color.white, 55), frame_width=1, border_width=1)
+var table diag = table.new(position.top_right, 2, panelMode == "Compact" ? 8 : 20, frame_color=color.new(color.white, 55), frame_width=1, border_width=1)
 
 f_table_row(int row, string name, string value) =>
-    table.cell(diag, 0, row, name, text_color=color.white, bgcolor=color.new(color.black, 10), text_size=size.small)
-    table.cell(diag, 1, row, value, text_color=f_state_color(value), bgcolor=color.new(color.black, 10), text_size=size.small)
+    table.cell(diag, 0, row, name, text_color=color.white, bgcolor=color.rgb(26, 29, 34), text_size=size.small)
+    table.cell(diag, 1, row, value, text_color=f_state_color(value), bgcolor=color.rgb(26, 29, 34), text_size=size.small)
 
 if showDiagnostics and barstate.islast
-    // On the first retest, candidate checks run before mitigation is latched.
-    string fvgDisplay = activeBullFvg ? "BULLISH" : activeBearFvg ? "BEARISH" : fvgState == "MITIGATED" ? "MITIGATED" : "NONE"
+    // Report the post-retest lifecycle, while retaining the confirmed candidate
+    // result from before mitigation. Event age/eligibility is never just a color.
+    string fvgDisplay = zoneInvalidated and not barstate.isconfirmed ? "INVALID PREVIEW" : fvgExpired ? "EXPIRED" : fvgState
     string consolidationDisplay = consolidationActive ? "BLOCKING" : "INACTIVE"
-    bool hasDirectionalFvg = activeBullFvg or activeBearFvg
+    bool hasDirectionalFvg = (activeBullFvg and fvgState == "BULLISH") or (activeBearFvg and fvgState == "BEARISH")
     bool liquidityGate = activeBullFvg ? bullSweepRecent or bullSmtRecent : activeBearFvg ? bearSweepRecent or bearSmtRecent : false
     bool structureGate = activeBullFvg ? bullBosRecent and htfBias == "BULLISH" : activeBearFvg ? bearBosRecent and htfBias == "BEARISH" : false
     float directionalRR = activeBullFvg ? bullRR : activeBearFvg ? bearRR : na
-    int directionalScore = activeBullFvg ? bullScore : activeBearFvg ? bearScore : 0
-    string blocker = not supportedChart ? "Unsupported chart" : not barstate.isconfirmed ? "Bar open" : not companionAligned ? "Companion data" : consolidationActive ? "Consolidation" : not hasDirectionalFvg ? "No active FVG" : not fvgTouched ? "Await retest" : not sequenceValid ? "Sequence/age" : not structureGate ? "BOS + HTF" : not liquidityGate ? "Liquidity" : not volumeAllowed ? "Thin volume" : directionalScore < minRuleScore ? "Score" : "Risk / duplicate"
+    int directionalScore = selectedCandidate ? selectedScore : hasDirectionalFvg ? (activeBullFvg ? bullScore : bearScore) : 0
+    bool riskGate = activeBullFvg ? close > bullStop and close < bullTarget and bullRR >= math.max(1.5, minRR) : activeBearFvg ? close < bearStop and close > bearTarget and bearRR >= math.max(1.5, minRR) : false
+    string blocker = not supportedChart ? "Unsupported chart" : not sessionDataReady ? "1m data incomplete" : not companionAligned ? "Companion data" : consolidationActive ? "Consolidation" : not hasDirectionalFvg ? "No active FVG" : not fvgTouched ? "Await retest" : not sequenceValid ? "Sequence/age" : not structureGate ? "BOS + HTF" : not liquidityGate ? "Liquidity" : not volumeAllowed ? "Thin volume" : directionalScore < minRuleScore ? "Score" : not riskGate ? "Risk geometry" : alreadyAlertedThisFvg ? "Already emitted" : "Await close"
+    string candleStatus = barstate.isconfirmed ? "CLOSED" : "OPEN / PREVIEW"
+    string sessionStatus = not sessionDataReady ? "MISSING / PARTIAL" : barstate.isconfirmed ? "COMPLETE" : "PREVIEW"
     if panelMode == "Compact"
         f_table_row(0, "SMC strict_v1", candidateDirection == "NONE" ? "WAIT" : candidateDirection)
         f_table_row(1, "Gate", selectedCandidate ? "PASS" : blocker)
-        f_table_row(2, "Score", hasDirectionalFvg ? str.tostring(directionalScore) + "/100 (min " + str.tostring(minRuleScore) + ")" : "No setup")
-        f_table_row(3, "HTF " + effectiveHtfTimeframe, htfBias)
-        f_table_row(4, "Session", sessionName)
-        f_table_row(5, "Setups / 100 bars", str.tostring(recentCandidates))
-        f_table_row(6, "News / final decision", "Backend only")
+        f_table_row(2, "Candle", candleStatus)
+        f_table_row(3, "Score", hasDirectionalFvg or selectedCandidate ? str.tostring(directionalScore) + "/100 (min " + str.tostring(minRuleScore) + ")" : "No setup")
+        f_table_row(4, "HTF " + effectiveHtfTimeframe, htfBias)
+        f_table_row(5, "Session (1m)", na(sessionAsOf) ? "NO DATA" : sessionName)
+        f_table_row(6, "Setups / 100 bars", str.tostring(recentCandidates))
+        f_table_row(7, "News / final decision", "Backend only")
     else
-        f_table_row(0, "BOS", bosState)
-        f_table_row(1, "FVG", fvgDisplay)
-        f_table_row(2, "Sweep", sweepState)
-        f_table_row(3, "SMT", smtState)
-        f_table_row(4, "RVOL", volumeState)
-        f_table_row(5, "Consolidation", consolidationDisplay)
-        f_table_row(6, "HTF Bias", htfBias)
-        f_table_row(7, "HTF TF", effectiveHtfTimeframe)
-        f_table_row(8, "Session", sessionName)
-        f_table_row(9, "FVG Active", hasDirectionalFvg ? "PASS" : "BLOCK")
-        f_table_row(10, "FVG Retest", fvgTouched ? "PASS" : "BLOCK")
-        f_table_row(11, "Sweep/SMT", liquidityGate ? "PASS" : "BLOCK")
-        f_table_row(12, "BOS + HTF", structureGate ? "PASS" : "BLOCK")
-        f_table_row(13, "Sequence", sequenceValid ? "PASS" : "BLOCK")
-        f_table_row(14, "Companion", companionAligned ? "PASS" : "BLOCK")
-        f_table_row(15, "RR", not na(directionalRR) and directionalRR >= minRR ? "PASS" : "BLOCK")
-        f_table_row(16, "Score / minimum", str.tostring(directionalScore) + "/100 | " + str.tostring(minRuleScore))
-        f_table_row(17, "Retests/Setups 100", str.tostring(recentFvgRetests) + "/" + str.tostring(recentCandidates))
-        f_table_row(18, "Candidate", candidateDirection)
-        f_table_row(19, "Gate", selectedCandidate ? "PASS" : blocker)
+        f_table_row(0, "Candle", candleStatus)
+        f_table_row(1, "Gate", selectedCandidate ? "PASS" : blocker)
+        f_table_row(2, "Last BOS", f_event_status(bosState, bosAge, bullBosRecent or bearBosRecent))
+        f_table_row(3, "FVG now", fvgDisplay)
+        f_table_row(4, "Last sweep", f_event_status(sweepState, sweepAge, bullSweepRecent or bearSweepRecent))
+        f_table_row(5, "Last SMT", f_event_status(smtState, smtAge, bullSmtRecent or bearSmtRecent))
+        f_table_row(6, "RVOL", volumeState + " " + str.tostring(rvol, "0.00"))
+        f_table_row(7, "Consolidation", consolidationDisplay)
+        f_table_row(8, "HTF " + effectiveHtfTimeframe, htfBias)
+        f_table_row(9, "Session (1m)", na(sessionAsOf) ? "NO DATA" : sessionName)
+        f_table_row(10, "1m coverage", sessionStatus)
+        f_table_row(11, "Pool low / high", f_num(sweepSessionLow) + " / " + f_num(sweepSessionHigh))
+        f_table_row(12, "Prior day low / high", f_num(priorDayLow) + " / " + f_num(priorDayHigh))
+        f_table_row(13, "FVG retest", (hasDirectionalFvg or selectedCandidate) and fvgTouched ? "PASS" : "BLOCK")
+        f_table_row(14, "BOS + HTF", hasDirectionalFvg and structureGate ? "PASS" : "BLOCK")
+        f_table_row(15, "Liquidity / sequence", (liquidityGate ? "PASS" : "BLOCK") + " / " + (sequenceValid ? "PASS" : "BLOCK"))
+        f_table_row(16, "Companion / RR", (companionAligned ? "PASS" : "BLOCK") + " / " + (riskGate ? "PASS" : "BLOCK"))
+        f_table_row(17, "Score / minimum", str.tostring(directionalScore) + "/100 | " + str.tostring(minRuleScore))
+        f_table_row(18, "Retests / setups 100", str.tostring(recentFvgRetests) + "/" + str.tostring(recentCandidates))
+        f_table_row(19, "Candidate", candidateDirection)

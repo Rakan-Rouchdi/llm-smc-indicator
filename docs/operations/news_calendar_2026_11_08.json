@@ -1,0 +1,52 @@
+{
+  "source": "2026-11-08 manual US macro/Fed verification: Federal Reserve Board, Chicago/Richmond/New York Fed; cross-check Forex Factory. Sources and scope: docs/live_rollout_2026_11_08.md. Fed appearances conservatively HIGH.",
+  "coverage_start": "2026-11-08T17:00:00Z",
+  "coverage_end": "2026-11-09T18:00:00Z",
+  "events": [
+    {
+      "event_id": "fed-bowman-20261109-1340",
+      "title": "Fed Bowman: Community Banking discussion",
+      "event_time": "2026-11-09T13:40:00Z",
+      "impact": "HIGH",
+      "symbols": ["ES", "NQ"],
+      "blackout_minutes_before": 30,
+      "blackout_minutes_after": 30
+    },
+    {
+      "event_id": "fed-goolsbee-20261109-1500",
+      "title": "Fed Goolsbee: Leadership Greater Chicago moderated Q&A",
+      "event_time": "2026-11-09T15:00:00Z",
+      "impact": "HIGH",
+      "symbols": ["ES", "NQ"],
+      "blackout_minutes_before": 30,
+      "blackout_minutes_after": 30
+    },
+    {
+      "event_id": "us-wholesale-trade-20261109-1500",
+      "title": "US Wholesale Trade: September 2026",
+      "event_time": "2026-11-09T15:00:00Z",
+      "impact": "LOW",
+      "symbols": ["ES", "NQ"],
+      "blackout_minutes_before": 30,
+      "blackout_minutes_after": 30
+    },
+    {
+      "event_id": "nyfed-sce-20261109-1600",
+      "title": "New York Fed Survey of Consumer Expectations",
+      "event_time": "2026-11-09T16:00:00Z",
+      "impact": "MEDIUM",
+      "symbols": ["ES", "NQ"],
+      "blackout_minutes_before": 30,
+      "blackout_minutes_after": 30
+    },
+    {
+      "event_id": "fed-barkin-20261109-1715",
+      "title": "Fed Barkin: Greater Greer Chamber of Commerce speech and Q&A",
+      "event_time": "2026-11-09T17:15:00Z",
+      "impact": "HIGH",
+      "symbols": ["ES", "NQ"],
+      "blackout_minutes_before": 30,
+      "blackout_minutes_after": 30
+    }
+  ]
+}

@@ -12,6 +12,7 @@
         <div>
           <h1>{{ setup.symbol }} {{ setup.timeframe }}</h1>
           <p>{{ setup.setup_id }}</p>
+          {% if setup.parsed_setup.diagnostics.get("test_mode") %}<p class="warning">DELIVERY TEST</p>{% endif %}
         </div>
         <a class="button" href="/dashboard">Dashboard</a>
       </header>

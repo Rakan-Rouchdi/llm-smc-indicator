@@ -1,5 +1,8 @@
 """Versioned consistency checks for Pine facts, not independent market-data verification."""
 
+import re
+from datetime import datetime
+
 from app.schemas import SetupAlert
 
 POLICY_VERSION = "strict_v1"
@@ -21,6 +24,9 @@ def confirmation_score(setup: SetupAlert) -> int:
 def setup_rejections(setup: SetupAlert, minimum: int = 75, max_bars: int = 6) -> list[str]:
     f, d, direction = setup.features, setup.diagnostics, setup.direction.value
     errors = []
+    contract = re.fullmatch(r"(ES|NQ)(?:[1-9]!|[FGHJKMNQUVXZ][0-9]{1,4})", setup.symbol.rsplit(":", 1)[-1])
+    if contract is None or contract.group(1) != setup.root_symbol.value:
+        errors.append("Unsupported instrument; strict_v1 supports ES/NQ only")
     if d.get("policy_version") != POLICY_VERSION:
         errors.append("Unsupported setup policy; update the Pine alert snapshot")
     if not d.get("bar_close_time"):
@@ -43,6 +49,21 @@ def setup_rejections(setup: SetupAlert, minimum: int = 75, max_bars: int = 6) ->
         errors.append("Confirmed retest of a valid zone is required")
     if d.get("companion_aligned") is not True:
         errors.append("Companion bars are missing or misaligned")
+    # Older saved alert snapshots remain compatible until the approved cutover.
+    # New detector revisions must attest to complete minute coverage at close.
+    if d.get("detector_revision") == "timing_sessions_v2":
+        if d.get("session_data_ready") is not True or d.get("session_resolution") != "1":
+            errors.append("Complete one-minute session data is required")
+        try:
+            closed = datetime.fromisoformat(d["bar_close_time"].replace("Z", "+00:00"))
+            as_of = d.get("session_as_of_ms")
+            if closed.tzinfo is None or type(as_of) is not int or as_of != int(closed.timestamp() * 1000):
+                raise ValueError
+        except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+            errors.append("Session data must end at the confirmed candle close")
+        pool_end = d.get("sweep_session_end_ms")
+        if pool_end is not None and (type(pool_end) is not int or pool_end > int(setup.bar_time.timestamp() * 1000)):
+            errors.append("Sweep session pool must predate the chart bar")
     clear_bars = d.get("consolidation_clear_bars")
     if type(clear_bars) is not int or clear_bars < 2:
         errors.append("Consolidation exit is not confirmed")

@@ -135,6 +135,16 @@ class AlertObservationRecord(Base):
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class CalendarRefreshRecord(Base):
+    __tablename__ = "calendar_refresh"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    last_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source_modified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    content_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+
 class NotificationRecord(Base):
     __tablename__ = "notification_outbox"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

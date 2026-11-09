@@ -5,6 +5,13 @@ Implemented November 8, 2026. Follows the findings in
 
 ## Delivery Status
 
+PR #4 was subsequently merged and deployed on November 8. See
+[the hosted deployment verification](pr4_deployment_verification_2026_11_08.md)
+for current results, outstanding readiness gates and the exact proposed alert.
+The implementation-stage observations below are retained as historical evidence.
+
+## Implementation Validation (Before Merge)
+
 Local backend implementation and Pine chart validation are complete. The hosted
 backend has not been deployed from this branch. No TradingView alert was created,
 deleted, renewed, or edited. The existing alert `5647010108` was inspected:
