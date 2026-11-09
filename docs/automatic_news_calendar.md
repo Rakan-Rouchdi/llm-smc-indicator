@@ -41,11 +41,22 @@ No new secret is required. The default provider remains mock for new local
 installs. Production now uses `NEWS_PROVIDER=forexfactory` with strict coverage
 required; failure never falls back to mock news or renews the manual snapshot.
 
-The lifespan-managed thread checks on process startup and approximately hourly.
-A durable cooldown avoids repeated fetches on rapid restarts. Use the existing
-single Uvicorn worker/one Render replica; this is not a distributed scheduler.
-The new `calendar_refresh` table is additive and created by existing startup
-metadata initialization on SQLite/PostgreSQL. Existing tables need no ALTER.
+The lifespan-managed thread checks on process startup and follows a durable
+next-attempt deadline. A conditional database claim prevents simultaneous fetches
+across overlapping deployments. Keep the existing single Uvicorn worker/replica;
+this guard is not an always-on scheduling service. The additive
+`calendar_refresh_schedule` table stores the deadline, attempt identity and failure
+count; existing `calendar_refresh` metadata is retained. Both tables are created
+by startup metadata initialization on SQLite/PostgreSQL; no existing table ALTER
+or destructive migration is required.
+
+Failures back off to 2, 4, then 8 times the configured interval (2/4/8 hours with
+the production 60-minute interval). A valid publisher `Retry-After` HTTP date or
+seconds value takes precedence when later. Backoff survives process restarts;
+success restores the normal interval. An old in-flight attempt cannot overwrite
+a newer attempt's result. Upgrading seeds the deadline from the previous attempt,
+including a conservative two-interval delay after a recorded failure. Deploying
+or restarting is not a way to force another publisher request.
 
 The thread runs only while the service process runs. [Render Free can spin down](https://render.com/docs/free#spinning-down-on-idle);
 it is not an always-on scheduler. After wake-up/restart, stale data remains blocked
@@ -83,7 +94,9 @@ possible upstream omission or incorrectly republished event.
 
 Use the existing authenticated dashboard and Processing Status (`GET /status`).
 `news_refresh` contains provider, enabled flag, last attempt, last successful
-download, publisher timestamp and last error. `GET /context/news-calendar`
+download, publisher timestamp, last error, next attempt and consecutive failures.
+The next attempt is an earliest retry deadline, not a promise of successful data
+or an always-on worker. `GET /context/news-calendar`
 returns current ES/NQ status and `fresh_until`. Public `/health` intentionally
 checks liveness, not news readiness. No extra public diagnostic endpoint is added.
 

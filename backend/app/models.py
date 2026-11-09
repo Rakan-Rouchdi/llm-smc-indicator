@@ -145,6 +145,14 @@ class CalendarRefreshRecord(Base):
     last_error: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
 
+class CalendarRefreshSchedule(Base):
+    __tablename__ = "calendar_refresh_schedule"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    next_attempt_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempt_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class NotificationRecord(Base):
     __tablename__ = "notification_outbox"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

@@ -9,14 +9,17 @@ from dataclasses import dataclass
 from datetime import datetime, time, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from typing import Literal
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import httpx
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter
+from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 
 from app.config import Settings
 from app.database import SessionLocal
-from app.models import CalendarRefreshRecord
+from app.models import CalendarRefreshRecord, CalendarRefreshSchedule
 from app.news import replace_calendar, utc
 from app.schemas import CalendarEvent, CalendarUpdate
 
@@ -28,6 +31,28 @@ NEW_YORK = ZoneInfo("America/New_York")
 
 class CalendarFeedError(ValueError):
     """Only fixed diagnostic codes, never response bodies or request URLs."""
+
+    def __init__(self, code: str, retry_at: datetime | None = None):
+        super().__init__(code)
+        self.retry_at = retry_at
+
+
+def retry_after(value: str | None, now: datetime) -> datetime | None:
+    """Honor both standard Retry-After forms without retaining untrusted headers."""
+    if not value or len(value) > 128:
+        return None
+    value = value.strip()
+    try:
+        if value.isascii() and value.isdecimal():
+            at = now + timedelta(seconds=int(value))
+        else:
+            at = parsedate_to_datetime(value)
+            if at.tzinfo is None:
+                return None
+            at = at.astimezone(timezone.utc)
+        return at if at > now else None
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 class FeedEvent(BaseModel):
@@ -115,12 +140,15 @@ def fetch_snapshot(now: datetime, settings: Settings) -> FeedSnapshot:
     # A fixed official export URL avoids arbitrary-URL/credential forwarding.
     # Redirects, HTML challenges and errors fail closed; no browser scraping.
     with httpx.Client(timeout=settings.news_fetch_timeout_seconds, follow_redirects=False) as client:
-        deadline = clock.monotonic() + settings.news_fetch_timeout_seconds * 2
+        started = clock.monotonic()
+        deadline = started + settings.news_fetch_timeout_seconds * 2
         with client.stream("GET", FEED_URL, headers={"Accept": "application/json"}) as response:
             if response.status_code != 200:
                 # Preserve the actionable status, never the response body or URL.
-                raise CalendarFeedError(f"publisher_http_{response.status_code}")
-            if response.status_code != 200 or "application/json" not in response.headers.get("content-type", ""):
+                received_at = now + timedelta(seconds=clock.monotonic() - started)
+                raise CalendarFeedError(f"publisher_http_{response.status_code}",
+                                        retry_after(response.headers.get("retry-after"), received_at))
+            if "application/json" not in response.headers.get("content-type", ""):
                 raise CalendarFeedError("unexpected_feed_response")
             body = bytearray()
             for chunk in response.iter_bytes():
@@ -133,7 +161,7 @@ def fetch_snapshot(now: datetime, settings: Settings) -> FeedSnapshot:
 
 
 class CalendarRefreshWorker:
-    """One refresher per service instance; durable cooldown survives restarts."""
+    """A database claim serializes fetches across restarts and overlapping deploys."""
 
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -151,10 +179,29 @@ class CalendarRefreshWorker:
         if self.settings.news_provider != "forexfactory":
             return False
         now = now or datetime.now(timezone.utc)
+        interval = timedelta(minutes=self.settings.news_refresh_interval_minutes)
+        attempt_id = uuid4().hex
         with SessionLocal() as db:
-            state = db.get(CalendarRefreshRecord, 1)
-            if state and 0 <= (now - utc(state.last_attempt_at)).total_seconds() < self.settings.news_refresh_interval_minutes * 60:
+            # A separate additive table also upgrades existing PostgreSQL installs.
+            # Seed from the previous worker's cooldown rather than fetching on deploy.
+            if db.get(CalendarRefreshSchedule, 1) is None:
+                previous = db.get(CalendarRefreshRecord, 1)
+                failed = bool(previous and previous.last_error)
+                due = utc(previous.last_attempt_at) + interval * (2 if failed else 1) if previous else now
+                db.add(CalendarRefreshSchedule(id=1, next_attempt_at=due,
+                                              consecutive_failures=int(failed)))
+                try:
+                    db.commit()
+                except IntegrityError:
+                    db.rollback()  # Another instance initialized the singleton.
+            claimed = db.execute(update(CalendarRefreshSchedule).where(
+                CalendarRefreshSchedule.id == 1,
+                CalendarRefreshSchedule.next_attempt_at <= now,
+            ).values(next_attempt_at=now + interval, attempt_id=attempt_id))
+            if claimed.rowcount != 1:
+                db.rollback()
                 return False
+            state = db.get(CalendarRefreshRecord, 1)
             state = state or CalendarRefreshRecord(id=1)
             state.last_attempt_at = now
             db.add(state)
@@ -162,6 +209,13 @@ class CalendarRefreshWorker:
         try:
             snapshot = fetch_snapshot(now, self.settings)
             with SessionLocal() as db:
+                # Conditional UPDATE locks the claim on both SQLite and PostgreSQL.
+                owned = db.execute(update(CalendarRefreshSchedule).where(
+                    CalendarRefreshSchedule.id == 1,
+                    CalendarRefreshSchedule.attempt_id == attempt_id,
+                ).values(attempt_id=None, consecutive_failures=0, next_attempt_at=now + interval))
+                if owned.rowcount != 1:
+                    return True  # A later lease owns the result; discard this one.
                 state = db.get(CalendarRefreshRecord, 1, with_for_update=True)
                 if state.source_modified_at:
                     previous = utc(state.source_modified_at)
@@ -182,23 +236,47 @@ class CalendarRefreshWorker:
             code = str(exc) if isinstance(exc, CalendarFeedError) else type(exc).__name__
             logger.warning("calendar_refresh_failed error_type=%s", code)
             with SessionLocal() as db:
+                owned = db.execute(update(CalendarRefreshSchedule).where(
+                    CalendarRefreshSchedule.id == 1,
+                    CalendarRefreshSchedule.attempt_id == attempt_id,
+                ).values(attempt_id=None))
+                if owned.rowcount != 1:
+                    return True
+                schedule = db.get(CalendarRefreshSchedule, 1)
+                schedule.consecutive_failures += 1
+                delay = interval * 2 ** min(schedule.consecutive_failures, 3)
+                due = now + delay
+                if isinstance(exc, CalendarFeedError) and exc.retry_at:
+                    due = max(due, exc.retry_at)
+                schedule.next_attempt_at = due
                 state = db.get(CalendarRefreshRecord, 1)
                 state.last_error = code
                 db.commit()
             # Retain the last good snapshot without extending its freshness.
         return True
 
+    def seconds_until_due(self, now: datetime | None = None) -> float:
+        now = now or datetime.now(timezone.utc)
+        with SessionLocal() as db:
+            schedule = db.get(CalendarRefreshSchedule, 1)
+            return max(1, (utc(schedule.next_attempt_at) - now).total_seconds()) if schedule else 60
+
     def _run(self):
         while not self._stop.is_set():
             try:
                 self.run_once()
+                delay = self.seconds_until_due()
             except Exception as exc:
                 logger.error("calendar_refresh_unavailable error_type=%s", type(exc).__name__)
-            self._stop.wait(self.settings.news_refresh_interval_minutes * 60)
+                delay = 60
+            # Recheck durable state at least hourly; very distant HTTP dates must
+            # not overflow the platform's threading timeout or hide another worker.
+            self._stop.wait(min(delay, 3600))
 
 
 def refresh_status(db, settings: Settings) -> dict:
     state = db.get(CalendarRefreshRecord, 1)
+    schedule = db.get(CalendarRefreshSchedule, 1)
     return {
         "enabled": settings.news_provider == "forexfactory",
         "provider": settings.news_provider,
@@ -207,4 +285,6 @@ def refresh_status(db, settings: Settings) -> dict:
         "last_success_at": utc(state.last_success_at).isoformat() if state and state.last_success_at else None,
         "source_modified_at": utc(state.source_modified_at).isoformat() if state and state.source_modified_at else None,
         "last_error": state.last_error if state else None,
+        "next_attempt_at": utc(schedule.next_attempt_at).isoformat() if schedule else None,
+        "consecutive_failures": schedule.consecutive_failures if schedule else 0,
     }

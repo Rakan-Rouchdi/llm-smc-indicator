@@ -29,7 +29,8 @@
         </dl>
         {% if operations.news_refresh.enabled %}
         <p>Calendar refresh: {{ operations.news_refresh.provider }} | Last fetched: {{ operations.news_refresh.last_success_at or "Never" }} | Source published: {{ operations.news_refresh.source_modified_at or "Unknown" }}</p>
-        {% if operations.news_refresh.last_error %}<p class="warning">Calendar refresh failed: {{ operations.news_refresh.last_error }}. Last good coverage still expires normally.</p>{% endif %}
+        {% if operations.news_refresh.last_error %}<p class="warning">{% if operations.news_refresh.last_error == "publisher_http_429" %}Calendar publisher rate limited the request (HTTP 429).{% else %}Calendar refresh failed: {{ operations.news_refresh.last_error }}.{% endif %} Last good coverage still expires normally.</p>{% endif %}
+        <p>Next calendar attempt (UTC): {{ operations.news_refresh.next_attempt_at or "Not scheduled" }} | Consecutive failures: {{ operations.news_refresh.consecutive_failures }}</p>
         {% endif %}
         {% if operations.alert.get("expires_at") %}<p>Alert expiry: {{ operations.alert.expires_at }} | Last checked: {{ operations.alert.observed_at }}</p>{% endif %}
         {% if operations.latest_natural_receipt %}<p>Last natural receipt: {{ operations.latest_natural_receipt.received_at }}</p>{% endif %}

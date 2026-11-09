@@ -1,4 +1,6 @@
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
 
@@ -8,9 +10,9 @@ from pydantic import ValidationError
 
 from app.config import Settings, get_settings
 from app.database import SessionLocal
-from app.models import CalendarCoverageRecord, CalendarRefreshRecord, NewsEventRecord
+from app.models import CalendarCoverageRecord, CalendarRefreshRecord, CalendarRefreshSchedule, NewsEventRecord
 from app.news import calendar_context, utc
-from app.news_refresh import CalendarFeedError, CalendarRefreshWorker, FeedSnapshot, fetch_snapshot, parse_snapshot, week_bounds
+from app.news_refresh import CalendarFeedError, CalendarRefreshWorker, FeedSnapshot, fetch_snapshot, parse_snapshot, retry_after, week_bounds
 from app.schemas import CalendarUpdate
 from app.worker import DecisionWorker
 
@@ -138,10 +140,11 @@ def test_stale_or_conflicting_snapshot_cannot_replace_newer(client, monkeypatch)
     for i, bad in enumerate((FeedSnapshot(newer.calendar, newer.modified_at-timedelta(seconds=1), newer.digest),
                             FeedSnapshot(newer.calendar, newer.modified_at, "different")), start=1):
         monkeypatch.setattr("app.news_refresh.fetch_snapshot", lambda *_, value=bad: value)
-        worker.run_once(NOW+timedelta(hours=i))
+        assert worker.run_once(NOW+timedelta(hours=2*i-1))
         with SessionLocal() as db:
             assert utc(db.get(CalendarCoverageRecord, 1).verified_at) == newer.modified_at
             assert db.get(CalendarRefreshRecord, 1).content_sha256 == newer.digest
+            assert db.get(CalendarRefreshRecord, 1).last_error in {"publisher_timestamp_regressed", "publisher_version_conflict"}
 
 
 def test_atomic_refresh_rolls_back_partial_event_changes(client, monkeypatch):
@@ -247,3 +250,124 @@ def test_auto_worker_starts_and_stops_with_app(client, monkeypatch):
         assert nested.get("/health").status_code == 200
         assert calls == ["start"]
     assert calls == ["start", "stop"]
+
+
+@pytest.mark.parametrize("value,seconds", [
+    ("7200", 7200), (format_datetime(NOW+timedelta(hours=3)), 10800),
+    (None, None), ("-1", None), ("garbage", None), ("0", None),
+    (format_datetime(NOW-timedelta(seconds=1)), None), ("9"*100, None),
+])
+def test_retry_after_formats(value, seconds):
+    assert retry_after(value, NOW) == (NOW+timedelta(seconds=seconds) if seconds else None)
+
+
+def test_transport_retains_safe_retry_deadline_not_body(monkeypatch):
+    client_type = httpx.Client
+    transport = httpx.MockTransport(lambda _: httpx.Response(429,
+        headers={"retry-after": format_datetime(NOW+timedelta(hours=5))}, content=b"private-response"))
+    monkeypatch.setattr("app.news_refresh.httpx.Client", lambda **kw: client_type(transport=transport, **kw))
+    with pytest.raises(CalendarFeedError) as error:
+        fetch_snapshot(NOW, settings())
+    assert str(error.value) == "publisher_http_429"
+    assert error.value.retry_at == NOW+timedelta(hours=5)
+
+
+def test_backoff_survives_restart_honors_publisher_and_resets_on_success(client, monkeypatch):
+    calls = []
+    def limited(*_):
+        calls.append(1)
+        raise CalendarFeedError("publisher_http_429", NOW+timedelta(hours=5))
+    monkeypatch.setattr("app.news_refresh.fetch_snapshot", limited)
+    worker = CalendarRefreshWorker(settings())
+    assert worker.run_once(NOW)
+    assert not CalendarRefreshWorker(settings()).run_once(NOW+timedelta(hours=4))
+    assert worker.seconds_until_due(NOW+timedelta(hours=4)) == 3600
+    assert worker.run_once(NOW+timedelta(hours=5))
+    with SessionLocal() as db:
+        schedule = db.get(CalendarRefreshSchedule, 1)
+        assert schedule.consecutive_failures == 2
+        assert utc(schedule.next_attempt_at) == NOW+timedelta(hours=9)
+        assert db.get(CalendarCoverageRecord, 1) is None
+    monkeypatch.setattr("app.news_refresh.fetch_snapshot", lambda *_: parse())
+    assert worker.run_once(NOW+timedelta(hours=9))
+    with SessionLocal() as db:
+        schedule = db.get(CalendarRefreshSchedule, 1)
+        assert schedule.consecutive_failures == 0
+        assert utc(schedule.next_attempt_at) == NOW+timedelta(hours=10)
+        assert db.get(CalendarRefreshRecord, 1).last_error is None
+        assert utc(db.get(CalendarCoverageRecord, 1).verified_at) == NOW-timedelta(minutes=10)
+    assert len(calls) == 2
+
+
+def test_exponential_backoff_is_capped_without_extending_coverage(client, monkeypatch):
+    def limited(*_):
+        raise CalendarFeedError("publisher_http_429")
+    monkeypatch.setattr("app.news_refresh.fetch_snapshot", limited)
+    worker = CalendarRefreshWorker(settings())
+    at = NOW
+    for hours in (2, 4, 8, 8):
+        assert worker.run_once(at)
+        with SessionLocal() as db:
+            assert utc(db.get(CalendarRefreshSchedule, 1).next_attempt_at) == at+timedelta(hours=hours)
+            assert calendar_context(db, "ES", at, settings())["status"] == "UNKNOWN"
+        at += timedelta(hours=hours)
+
+
+@pytest.mark.parametrize("error,hours", [(None, 1), ("publisher_http_429", 2)])
+def test_upgrade_preserves_existing_cooldown(client, monkeypatch, error, hours):
+    with SessionLocal() as db:
+        db.add(CalendarRefreshRecord(id=1, last_attempt_at=NOW, last_error=error))
+        db.commit()
+    monkeypatch.setattr("app.news_refresh.fetch_snapshot", lambda *_: pytest.fail("Upgrade must not force a fetch"))
+    worker = CalendarRefreshWorker(settings())
+    assert not worker.run_once(NOW+timedelta(minutes=30))
+    assert worker.seconds_until_due(NOW) == hours*3600
+
+
+def test_overlapping_workers_fetch_only_once(client, monkeypatch):
+    entered, release = threading.Event(), threading.Event()
+    calls = []
+    def fetch(*_):
+        calls.append(1)
+        entered.set()
+        assert release.wait(timeout=5)
+        return parse()
+    monkeypatch.setattr("app.news_refresh.fetch_snapshot", fetch)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(CalendarRefreshWorker(settings()).run_once, NOW)
+        try:
+            assert entered.wait(timeout=5)
+            assert not pool.submit(CalendarRefreshWorker(settings()).run_once, NOW).result(timeout=5)
+        finally:
+            release.set()
+        assert first.result(timeout=5)
+    assert len(calls) == 1
+
+
+def test_obsolete_attempt_cannot_replace_newer_snapshot(client, monkeypatch):
+    worker = CalendarRefreshWorker(settings())
+    def delayed(*_):
+        monkeypatch.setattr("app.news_refresh.fetch_snapshot", lambda *_: parse(modified=NOW))
+        assert worker.run_once(NOW+timedelta(hours=1))
+        return parse()
+    monkeypatch.setattr("app.news_refresh.fetch_snapshot", delayed)
+    assert worker.run_once(NOW)
+    with SessionLocal() as db:
+        assert utc(db.get(CalendarCoverageRecord, 1).verified_at) == NOW
+        assert db.get(CalendarRefreshRecord, 1).last_error is None
+
+
+def test_rate_limit_dashboard_and_status_show_persistent_retry(client, monkeypatch):
+    monkeypatch.setenv("NEWS_PROVIDER", "forexfactory")
+    monkeypatch.setenv("REQUIRE_VERIFIED_NEWS", "true")
+    get_settings.cache_clear()
+    def limited(*_):
+        raise CalendarFeedError("publisher_http_429")
+    monkeypatch.setattr("app.news_refresh.fetch_snapshot", limited)
+    assert CalendarRefreshWorker(get_settings()).run_once(NOW)
+    status = client.get("/status").json()["news_refresh"]
+    assert status["next_attempt_at"] == (NOW+timedelta(hours=2)).isoformat()
+    assert status["consecutive_failures"] == 1
+    page = client.get("/dashboard").text
+    assert "Calendar publisher rate limited the request (HTTP 429)" in page
+    assert "Next calendar attempt (UTC)" in page
