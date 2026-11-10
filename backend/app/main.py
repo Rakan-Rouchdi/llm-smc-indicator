@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
-from app.config import Settings, get_settings
+from app.config import AUTO_NEWS_PROVIDERS, Settings, get_settings
 from app.auth import require_dashboard_auth
 from app.dashboard import router as dashboard_router
 from app.database import get_db, init_db
@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
     protect_access_logs()
     init_db()
     worker = DecisionWorker(get_settings()) if get_settings().decision_worker_enabled else None
-    calendar_worker = CalendarRefreshWorker(get_settings()) if get_settings().news_provider == "forexfactory" else None
+    calendar_worker = CalendarRefreshWorker(get_settings()) if get_settings().news_provider in AUTO_NEWS_PROVIDERS else None
     app.state.decision_worker = worker
     app.state.calendar_worker = calendar_worker
     if calendar_worker is not None:
@@ -173,7 +173,7 @@ def system_status(request: Request, db: Annotated[Session, Depends(get_db)]) -> 
 
 @app.put("/context/news-calendar", dependencies=[Depends(require_dashboard_auth)])
 def put_calendar(payload: CalendarUpdate, db: Annotated[Session, Depends(get_db)]):
-    if get_settings().news_provider == "forexfactory":
+    if get_settings().news_provider in AUTO_NEWS_PROVIDERS:
         raise HTTPException(status_code=409, detail="Switch NEWS_PROVIDER to manual before manual calendar updates")
     try:
         replace_calendar(db, payload, datetime.now(timezone.utc))

@@ -205,15 +205,17 @@ webhook; see `docs/phase6c_tradingview_render_cutover.md`.
 
 ## Automatic Calendar and Closed-Market Testing
 
-The optional `NEWS_PROVIDER=forexfactory` worker refreshes the publisher's weekly
-USD economic calendar in the backend. Keep `REQUIRE_VERIFIED_NEWS=true` and
-`NEWS_MAX_AGE_HOURS=24`. Refresh failures never renew the last good snapshot;
+The `NEWS_PROVIDER=showmytrades` worker refreshes a free, keyless scheduled USD
+calendar every 15 minutes. Keep `REQUIRE_VERIFIED_NEWS=true` and
+`NEWS_MAX_AGE_HOURS=2`. The adapter blocks medium/high events and Fed appearances.
+Refresh failures never renew the last good snapshot;
 stale/missing coverage produces NO_TRADE. This is source-validated scheduled
 calendar coverage, not independent fact-checking or a breaking-news feed.
 
 Deployment, source limitations, refresh diagnostics and rollback:
-[Automatic news calendar](docs/automatic_news_calendar.md). The worker is opt-in;
-merging this change alone does not change a production manual-news setting.
+[Automatic news calendar](docs/automatic_news_calendar.md). Local defaults remain
+mock; Render Blueprint configuration enables the automatic provider. Forex Factory
+remains available but its Render requests were still rate-limited on November 10.
 
 An isolated local dashboard preview works with the market closed:
 

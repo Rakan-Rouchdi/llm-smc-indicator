@@ -2,20 +2,25 @@
 
 ## Status and Scope
 
-Deployed and enabled on November 9, 2026, after PR #5 was merged. The first
+Forex Factory was deployed and enabled on November 9, 2026, after PR #5 was merged. The first
 Render-side fetch failed with `HTTPStatusError`; a controlled retry confirmed
 `publisher_http_429` (rate limiting). No successful automatic refresh has yet
-been verified. Production correctly reports ES/NQ UNKNOWN and blocks
-approvals. This is a deployment blocker, not a successful feed cutover. See
+been verified for that provider. Production correctly reported ES/NQ UNKNOWN and blocked
+approvals. See
 `docs/timing_session_fixes_2026_11_09.md` for rollout evidence and limitations.
 
-The source is the [Forex Factory calendar's Weekly Export](https://www.forexfactory.com/calendar),
-which links to the public [JSON feed](https://nfs.faireconomy.media/ff_calendar_thisweek.json).
-No API key, LLM browsing, local Codex automation or browser scraping is used.
-Only scheduled USD events are mapped to ES/NQ. The provider's High impact events
-are blocked. FOMC/Fed-labelled appearances are additionally elevated to HIGH,
-matching the existing conservative manual policy. All HIGH events retain the
-configured 30-minute-before/after blackout by default.
+The replacement is [ShowMyTrades' public calendar API](https://showmytrades.com/docs/api/economic-calendar),
+without an account or API key. It covers scheduled USD releases and central-bank
+appearances. Only ES/NQ are supported here; gold is still not an approved instrument.
+The request includes all impact levels. This adapter conservatively blocks both
+HIGH and MEDIUM, plus Fed-labelled events, because provider impact scales differ.
+All blocking events keep the configured 30-minute-before/after window. Holidays
+are not by themselves evidence of an economic-news blackout.
+
+Forex Factory remains selectable for rollback, not an automatic fallback chain.
+No host rotation, proxy, bypass or extra request to its rate-limited endpoint is
+used to implement the replacement. See `news_feed_recovery_2026_11_10.md` for
+deployment evidence and source spot checks.
 
 "Source-validated" means known HTTPS source, strict parsing, bounded current-week
 coverage and publisher freshness checks. It does NOT mean each event is
@@ -29,16 +34,16 @@ contractual SLA here; review provider licensing before customer redistribution.
 Set these non-secret variables in Render after deploying the code:
 
 ```dotenv
-NEWS_PROVIDER=forexfactory
+NEWS_PROVIDER=showmytrades
 REQUIRE_VERIFIED_NEWS=true
-NEWS_MAX_AGE_HOURS=24
-NEWS_REFRESH_INTERVAL_MINUTES=60
+NEWS_MAX_AGE_HOURS=2
+NEWS_REFRESH_INTERVAL_MINUTES=15
 NEWS_FETCH_TIMEOUT_SECONDS=10
 ```
 
 Keep all existing database, webhook, dashboard and OpenAI settings unchanged.
 No new secret is required. The default provider remains mock for new local
-installs. Production now uses `NEWS_PROVIDER=forexfactory` with strict coverage
+installs. The Render Blueprint selects `NEWS_PROVIDER=showmytrades` with strict coverage
 required; failure never falls back to mock news or renews the manual snapshot.
 
 The lifespan-managed thread checks on process startup and follows a durable
@@ -46,12 +51,16 @@ next-attempt deadline. A conditional database claim prevents simultaneous fetche
 across overlapping deployments. Keep the existing single Uvicorn worker/replica;
 this guard is not an always-on scheduling service. The additive
 `calendar_refresh_schedule` table stores the deadline, attempt identity and failure
-count; existing `calendar_refresh` metadata is retained. Both tables are created
+count; existing `calendar_refresh` metadata is retained. Rows are provider-scoped
+(Forex Factory id 1, ShowMyTrades id 2), so errors/publication versions never leak
+across a switch. A snapshot from another provider cannot certify current coverage.
+Both tables are created
 by startup metadata initialization on SQLite/PostgreSQL; no existing table ALTER
 or destructive migration is required.
 
 Failures back off to 2, 4, then 8 times the configured interval (2/4/8 hours with
-the production 60-minute interval). A valid publisher `Retry-After` HTTP date or
+the old 60-minute interval; 30/60/120 minutes with the new 15-minute interval).
+A valid publisher `Retry-After` HTTP date or
 seconds value takes precedence when later. Backoff survives process restarts;
 success restores the normal interval. An old in-flight attempt cannot overwrite
 a newer attempt's result. Upgrading seeds the deadline from the previous attempt,
@@ -66,7 +75,11 @@ authenticated ingestion service; do not relax the stale-data rule.
 
 ## Fail-Closed Rules
 
-- Freshness uses HTTP `Last-Modified`, not the time of a successful download.
+- ShowMyTrades freshness uses its `generated_at`, never HTTP Date, `server_time`
+  or local download time. It describes publisher assembly time, NOT proof of
+  successful checks of every upstream source. Its lifetime is capped at two hours
+  even if the operator accidentally configures a longer lifetime. Forex Factory
+  continues using HTTP `Last-Modified` with its configured age limit.
   Re-fetching the same publication does not extend its lifetime.
 - Reject missing, future or too-old publication timestamps; HTML/error/redirect
   responses; malformed JSON; oversized responses; empty/missing USD coverage;
@@ -80,7 +93,13 @@ authenticated ingestion service; do not relax the stale-data rule.
   deterministic preflight refuses approval without an LLM call.
 - Backend rechecks news after reasoning as well. Automated provider configuration
   rejects `REQUIRE_VERIFIED_NEWS=false` at startup.
-- Coverage uses the publisher's Sunday-Saturday New York week, respecting DST.
+- ShowMyTrades coverage must match the requested rolling window: six hours
+  before publication to seven days after. Window edges are trimmed for adjacent
+  blackouts. Event UTC and epoch timestamps must agree; reported count must match;
+  tentative/disputed schedules, missing confidence and invalid reschedules fail
+  closed. Empty feeds are not evidence of a quiet week. A valid reschedule replaces
+  the prior occurrence through the atomic snapshot update.
+- Forex Factory coverage uses the publisher's Sunday-Saturday New York week, respecting DST.
   Adjacent weeks are not fetched. The 30-minute gaps at weekly edges deliberately
   remain UNKNOWN to avoid missing overlapping blackout windows across rollover.
 - Manual calendar PUT returns HTTP 409 in automatic mode to prevent competing
@@ -127,10 +146,10 @@ These counts are observations, not permanent expectations or completeness proof.
 Automated tests cover publisher freshness, failed refresh retention, cooldown
 after restart, DST/week rollover, atomic rollback, HTTP failures, parsing failures,
 live-mode opt-in lifecycle, approved/blackout/stale webhook decisions and UI output.
-The original implementation suite had 153 passing tests. The November 9 timing
-and deployment fixes bring the suite to 167 passed, zero failed, with one existing
-Starlette/httpx deprecation warning. Tests use mock HTTP/provider responses;
-live source probes are separate. Production enablement is verified, but a
-successful hosted refresh is not. Subsequent publisher HTTP errors now retain a
+The replacement suite additionally covers provider isolation, timestamp agreement,
+publication-clock independence, reschedules, uncertain events, the hard two-hour
+stale limit, authenticated monitoring output and end-to-end stale/blackout refusal.
+Tests use mock HTTP/provider responses; live source probes are separate.
+Publisher HTTP errors retain a
 safe `publisher_http_<status>` code without response bodies or URLs. The initial
 legacy `HTTPStatusError` record cannot retrospectively identify its status code.

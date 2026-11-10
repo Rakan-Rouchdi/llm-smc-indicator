@@ -85,7 +85,7 @@ def operational_status(db, settings, worker=None, now=None):
     natural = next((row for row in recent if json.loads(row.payload_json).get("diagnostics", {}).get("test_mode") is not True), None)
     alert = alert_status(db, settings, now)
     news = {symbol: calendar_context(db, symbol, now, settings)["status"]
-            if settings.news_provider in {"manual", "forexfactory"} else "UNVERIFIED" for symbol in ("ES", "NQ")}
+            if settings.news_provider != "mock" else "UNVERIFIED" for symbol in ("ES", "NQ")}
     alive = bool(worker and worker.thread.is_alive())
     ready = alive and not counts.get("FAILED", 0) and age <= settings.max_setup_age_minutes * 60
     return {"database": "ok", "worker_alive": alive, "service_ready": ready,

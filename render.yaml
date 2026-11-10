@@ -30,12 +30,12 @@ services:
       - key: LLM_MAX_RETRIES
         value: "2"
       - key: NEWS_PROVIDER
-        value: forexfactory
+        value: showmytrades
       - key: REQUIRE_VERIFIED_NEWS
         value: "true"
       - key: NEWS_MAX_AGE_HOURS
-        value: "24"
+        value: "2"
       - key: NEWS_REFRESH_INTERVAL_MINUTES
-        value: "60"
+        value: "15"
       - key: NEWS_FETCH_TIMEOUT_SECONDS
         value: "10"

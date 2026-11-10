@@ -4,6 +4,8 @@ from typing import Literal
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+AUTO_NEWS_PROVIDERS = {"forexfactory", "showmytrades"}
+
 
 class Settings(BaseSettings):
     app_env: str = "development"
@@ -29,7 +31,7 @@ class Settings(BaseSettings):
     max_setup_age_minutes: int = 15
     min_rule_score: int = Field(default=75, ge=75, le=100)
     confirmation_max_bars: int = Field(default=6, ge=3, le=6)
-    news_provider: Literal["mock", "manual", "forexfactory"] = "mock"
+    news_provider: Literal["mock", "manual", "forexfactory", "showmytrades"] = "mock"
     require_verified_news: bool = True
     news_max_age_hours: int = Field(default=24, ge=1, le=168)
     news_refresh_interval_minutes: int = Field(default=60, ge=15, le=720)
@@ -68,7 +70,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def automated_news_requires_freshness_gate(self):
-        if self.news_provider == "forexfactory" and not self.require_verified_news:
+        if self.news_provider in AUTO_NEWS_PROVIDERS and not self.require_verified_news:
             raise ValueError("Automatic news requires REQUIRE_VERIFIED_NEWS=true")
         return self
 

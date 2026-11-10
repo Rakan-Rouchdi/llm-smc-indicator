@@ -1,4 +1,4 @@
-"""Hourly public-calendar ingestion, separate from webhook acknowledgement/LLM work."""
+"""Bounded public-calendar ingestion, separate from webhook acknowledgement/LLM work."""
 
 import hashlib
 import json
@@ -17,14 +17,18 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, TypeAdapter
 from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
-from app.config import Settings
+from app.config import AUTO_NEWS_PROVIDERS, Settings
 from app.database import SessionLocal
 from app.models import CalendarRefreshRecord, CalendarRefreshSchedule
-from app.news import replace_calendar, utc
+from app.news import SOURCE_PREFIXES, max_calendar_age_hours, replace_calendar, utc
 from app.schemas import CalendarEvent, CalendarUpdate
 
 logger = logging.getLogger(__name__)
 FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+SHOWMYTRADES_URL = "https://showmytrades.com/api/public/calendar/v1?currency=USD&impact=all&days=7"
+# Reuse the additive tables, but do not inherit another provider's cooldown,
+# publication version or success. Existing Forex Factory installations keep id=1.
+PROVIDER_IDS = {"forexfactory": 1, "showmytrades": 2}
 MAX_BYTES = 2 * 1024 * 1024
 NEW_YORK = ZoneInfo("America/New_York")
 
@@ -61,6 +65,28 @@ class FeedEvent(BaseModel):
     country: str = Field(pattern=r"^[A-Z]{3}$")
     date: AwareDatetime
     impact: Literal["High", "Medium", "Low", "Holiday", "Non-Economic"]
+
+
+class RollingEvent(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(min_length=1, max_length=255)
+    title: str = Field(min_length=1, max_length=255)
+    currency: Literal["USD"]
+    time: AwareDatetime
+    ts: int = Field(strict=True)
+    impact: Literal["high", "medium", "low", "holiday"]
+    status: Literal["scheduled", "moved", "tentative"]
+    confidence: Literal["official", "sources_agree", "single_source", "sources_disagree"]
+    moved_from: str
+
+
+class RollingCalendar(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    generated_at: AwareDatetime
+    start: AwareDatetime = Field(alias="from")
+    end: AwareDatetime = Field(alias="to")
+    count: int = Field(strict=True, ge=1, le=500)
+    events: list[RollingEvent] = Field(min_length=1, max_length=500)
 
 
 @dataclass(frozen=True)
@@ -136,13 +162,69 @@ def parse_snapshot(body: bytes, modified: str | None, now: datetime, settings: S
     return FeedSnapshot(calendar, modified_at, hashlib.sha256(body).hexdigest())
 
 
+def parse_rolling_snapshot(body: bytes, now: datetime, settings: Settings) -> FeedSnapshot:
+    if len(body) > MAX_BYTES:
+        raise CalendarFeedError("response_too_large")
+    feed = RollingCalendar.model_validate_json(body)
+    published = feed.generated_at.astimezone(timezone.utc)
+    # server_time and HTTP Date are request clocks, NOT calendar freshness.
+    # generated_at is publisher assembly time, not proof every upstream is live.
+    if not 0 <= (now - published).total_seconds() < max_calendar_age_hours(settings) * 3600:
+        raise CalendarFeedError("stale_or_future_publisher_timestamp")
+    if feed.count != len(feed.events):
+        raise CalendarFeedError("incomplete_event_list")
+    if feed.start != published - timedelta(hours=6) or feed.end != published + timedelta(days=7):
+        raise CalendarFeedError("unexpected_coverage_window")
+    start = feed.start + timedelta(minutes=settings.default_blackout_minutes_after)
+    end = feed.end - timedelta(minutes=settings.default_blackout_minutes_before)
+    if not start <= now < end:
+        raise CalendarFeedError("coverage_gap")
+    events, identities = [], set()
+    for row in feed.events:
+        at = row.time.astimezone(timezone.utc)
+        if at.timestamp() != row.ts or not feed.start <= at <= feed.end:
+            raise CalendarFeedError("inconsistent_event_time")
+        if row.id in identities:
+            raise CalendarFeedError("duplicate_event")
+        identities.add(row.id)
+        if row.status == "tentative" or row.confidence == "sources_disagree":
+            raise CalendarFeedError("ambiguous_event_schedule")
+        if row.status == "moved":
+            previous = TypeAdapter(AwareDatetime).validate_python(row.moved_from)
+            if previous == at:
+                raise CalendarFeedError("invalid_rescheduled_event")
+        elif row.moved_from:
+            raise CalendarFeedError("invalid_rescheduled_event")
+        fed = row.title.casefold().startswith(("fed ", "fed's ", "fomc", "federal reserve"))
+        # Provider impact scales differ. Block MEDIUM as well as HIGH rather than
+        # downgrade e.g. claims that the previous provider rated HIGH.
+        impact = "HIGH" if row.impact in {"high", "medium"} or fed else "LOW"
+        if impact == "HIGH" and at.astimezone(NEW_YORK).time() == time():
+            raise CalendarFeedError("ambiguous_blocking_event_time")
+        events.append(CalendarEvent(
+            event_id="smt-" + hashlib.sha256(row.id.encode()).hexdigest()[:32],
+            title=row.title, event_time=at, impact=impact, symbols=["ES", "NQ"],
+            blackout_minutes_before=settings.default_blackout_minutes_before,
+            blackout_minutes_after=settings.default_blackout_minutes_after,
+        ))
+    calendar = CalendarUpdate(
+        source=SOURCE_PREFIXES["showmytrades"] + " high/medium and Fed appearances blocked; publisher assembly timestamp",
+        coverage_start=start, coverage_end=end, events=events,
+    )
+    # Exclude volatile response clocks so an unchanged publication is not a
+    # version conflict merely because it was downloaded at a different time.
+    digest = hashlib.sha256(calendar.model_dump_json().encode()).hexdigest()
+    return FeedSnapshot(calendar, published, digest)
+
+
 def fetch_snapshot(now: datetime, settings: Settings) -> FeedSnapshot:
     # A fixed official export URL avoids arbitrary-URL/credential forwarding.
     # Redirects, HTML challenges and errors fail closed; no browser scraping.
     with httpx.Client(timeout=settings.news_fetch_timeout_seconds, follow_redirects=False) as client:
         started = clock.monotonic()
         deadline = started + settings.news_fetch_timeout_seconds * 2
-        with client.stream("GET", FEED_URL, headers={"Accept": "application/json"}) as response:
+        url = SHOWMYTRADES_URL if settings.news_provider == "showmytrades" else FEED_URL
+        with client.stream("GET", url, headers={"Accept": "application/json"}) as response:
             if response.status_code != 200:
                 # Preserve the actionable status, never the response body or URL.
                 received_at = now + timedelta(seconds=clock.monotonic() - started)
@@ -157,6 +239,8 @@ def fetch_snapshot(now: datetime, settings: Settings) -> FeedSnapshot:
                 body.extend(chunk)
                 if len(body) > MAX_BYTES:
                     raise CalendarFeedError("response_too_large")
+            if settings.news_provider == "showmytrades":
+                return parse_rolling_snapshot(bytes(body), now, settings)
             return parse_snapshot(bytes(body), response.headers.get("last-modified"), now, settings)
 
 
@@ -165,6 +249,7 @@ class CalendarRefreshWorker:
 
     def __init__(self, settings: Settings):
         self.settings = settings
+        self.provider_id = PROVIDER_IDS.get(settings.news_provider)
         self._stop = threading.Event()
         self.thread = threading.Thread(target=self._run, name="calendar-refresh", daemon=True)
 
@@ -176,7 +261,7 @@ class CalendarRefreshWorker:
         self.thread.join(timeout=self.settings.news_fetch_timeout_seconds + 2)
 
     def run_once(self, now: datetime | None = None) -> bool:
-        if self.settings.news_provider != "forexfactory":
+        if self.settings.news_provider not in AUTO_NEWS_PROVIDERS:
             return False
         now = now or datetime.now(timezone.utc)
         interval = timedelta(minutes=self.settings.news_refresh_interval_minutes)
@@ -184,25 +269,25 @@ class CalendarRefreshWorker:
         with SessionLocal() as db:
             # A separate additive table also upgrades existing PostgreSQL installs.
             # Seed from the previous worker's cooldown rather than fetching on deploy.
-            if db.get(CalendarRefreshSchedule, 1) is None:
-                previous = db.get(CalendarRefreshRecord, 1)
+            if db.get(CalendarRefreshSchedule, self.provider_id) is None:
+                previous = db.get(CalendarRefreshRecord, self.provider_id)
                 failed = bool(previous and previous.last_error)
                 due = utc(previous.last_attempt_at) + interval * (2 if failed else 1) if previous else now
-                db.add(CalendarRefreshSchedule(id=1, next_attempt_at=due,
+                db.add(CalendarRefreshSchedule(id=self.provider_id, next_attempt_at=due,
                                               consecutive_failures=int(failed)))
                 try:
                     db.commit()
                 except IntegrityError:
                     db.rollback()  # Another instance initialized the singleton.
             claimed = db.execute(update(CalendarRefreshSchedule).where(
-                CalendarRefreshSchedule.id == 1,
+                CalendarRefreshSchedule.id == self.provider_id,
                 CalendarRefreshSchedule.next_attempt_at <= now,
             ).values(next_attempt_at=now + interval, attempt_id=attempt_id))
             if claimed.rowcount != 1:
                 db.rollback()
                 return False
-            state = db.get(CalendarRefreshRecord, 1)
-            state = state or CalendarRefreshRecord(id=1)
+            state = db.get(CalendarRefreshRecord, self.provider_id)
+            state = state or CalendarRefreshRecord(id=self.provider_id)
             state.last_attempt_at = now
             db.add(state)
             db.commit()
@@ -211,12 +296,12 @@ class CalendarRefreshWorker:
             with SessionLocal() as db:
                 # Conditional UPDATE locks the claim on both SQLite and PostgreSQL.
                 owned = db.execute(update(CalendarRefreshSchedule).where(
-                    CalendarRefreshSchedule.id == 1,
+                    CalendarRefreshSchedule.id == self.provider_id,
                     CalendarRefreshSchedule.attempt_id == attempt_id,
                 ).values(attempt_id=None, consecutive_failures=0, next_attempt_at=now + interval))
                 if owned.rowcount != 1:
                     return True  # A later lease owns the result; discard this one.
-                state = db.get(CalendarRefreshRecord, 1, with_for_update=True)
+                state = db.get(CalendarRefreshRecord, self.provider_id, with_for_update=True)
                 if state.source_modified_at:
                     previous = utc(state.source_modified_at)
                     if snapshot.modified_at < previous:
@@ -237,19 +322,19 @@ class CalendarRefreshWorker:
             logger.warning("calendar_refresh_failed error_type=%s", code)
             with SessionLocal() as db:
                 owned = db.execute(update(CalendarRefreshSchedule).where(
-                    CalendarRefreshSchedule.id == 1,
+                    CalendarRefreshSchedule.id == self.provider_id,
                     CalendarRefreshSchedule.attempt_id == attempt_id,
                 ).values(attempt_id=None))
                 if owned.rowcount != 1:
                     return True
-                schedule = db.get(CalendarRefreshSchedule, 1)
+                schedule = db.get(CalendarRefreshSchedule, self.provider_id)
                 schedule.consecutive_failures += 1
                 delay = interval * 2 ** min(schedule.consecutive_failures, 3)
                 due = now + delay
                 if isinstance(exc, CalendarFeedError) and exc.retry_at:
                     due = max(due, exc.retry_at)
                 schedule.next_attempt_at = due
-                state = db.get(CalendarRefreshRecord, 1)
+                state = db.get(CalendarRefreshRecord, self.provider_id)
                 state.last_error = code
                 db.commit()
             # Retain the last good snapshot without extending its freshness.
@@ -258,7 +343,7 @@ class CalendarRefreshWorker:
     def seconds_until_due(self, now: datetime | None = None) -> float:
         now = now or datetime.now(timezone.utc)
         with SessionLocal() as db:
-            schedule = db.get(CalendarRefreshSchedule, 1)
+            schedule = db.get(CalendarRefreshSchedule, self.provider_id) if self.provider_id else None
             return max(1, (utc(schedule.next_attempt_at) - now).total_seconds()) if schedule else 60
 
     def _run(self):
@@ -275,10 +360,11 @@ class CalendarRefreshWorker:
 
 
 def refresh_status(db, settings: Settings) -> dict:
-    state = db.get(CalendarRefreshRecord, 1)
-    schedule = db.get(CalendarRefreshSchedule, 1)
+    provider_id = PROVIDER_IDS.get(settings.news_provider)
+    state = db.get(CalendarRefreshRecord, provider_id) if provider_id else None
+    schedule = db.get(CalendarRefreshSchedule, provider_id) if provider_id else None
     return {
-        "enabled": settings.news_provider == "forexfactory",
+        "enabled": settings.news_provider in AUTO_NEWS_PROVIDERS,
         "provider": settings.news_provider,
         "interval_minutes": settings.news_refresh_interval_minutes,
         "last_attempt_at": utc(state.last_attempt_at).isoformat() if state else None,

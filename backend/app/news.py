@@ -6,9 +6,18 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, true
 from sqlalchemy.orm import Session
 
-from app.config import Settings
+from app.config import AUTO_NEWS_PROVIDERS, Settings
 from app.models import CalendarCoverageRecord, NewsEventRecord
 from app.schemas import CalendarUpdate
+
+SOURCE_PREFIXES = {"forexfactory": "Forex Factory weekly export;",
+                   "showmytrades": "ShowMyTrades USD calendar;"}
+
+
+def max_calendar_age_hours(settings: Settings) -> int:
+    # A rolling aggregator publication has a shorter safety lifetime than a
+    # manually checked calendar. Configuration may tighten, never extend it.
+    return min(settings.news_max_age_hours, 2) if settings.news_provider == "showmytrades" else settings.news_max_age_hours
 
 
 def utc(value: datetime) -> datetime:
@@ -39,11 +48,14 @@ def calendar_context(db: Session, symbol: str, now: datetime, settings: Settings
     rows = db.execute(select(CalendarCoverageRecord, NewsEventRecord).outerjoin(
         NewsEventRecord, true()).where(CalendarCoverageRecord.id == 1)).all()
     coverage = rows[0][0] if rows else None
-    automated = bool(coverage and coverage.source.startswith("Forex Factory weekly export;"))
+    provider = next((key for key, prefix in SOURCE_PREFIXES.items()
+                     if coverage and coverage.source.startswith(prefix)), "manual")
+    automated = provider in AUTO_NEWS_PROVIDERS
+    max_age = max_calendar_age_hours(settings)
     valid = bool(symbol in {"ES", "NQ"} and coverage
-                 and (settings.news_provider != "forexfactory" or automated)
+                 and (settings.news_provider not in AUTO_NEWS_PROVIDERS or provider == settings.news_provider)
                  and utc(coverage.coverage_start) <= now < utc(coverage.coverage_end)
-                 and 0 <= (now - utc(coverage.verified_at)).total_seconds() < settings.news_max_age_hours * 3600)
+                 and 0 <= (now - utc(coverage.verified_at)).total_seconds() < max_age * 3600)
     active, relevant = [], []
     if valid:
         for _, event in rows:
@@ -60,8 +72,8 @@ def calendar_context(db: Session, symbol: str, now: datetime, settings: Settings
                 active.append(item)
     nearest = min(active or relevant, key=lambda item: abs(item["minutes_to_event"]), default=None)
     state = "UNKNOWN" if not valid else "BLACKOUT" if active else "CLEAR"
-    return {"provider": "forexfactory" if automated else "manual", "status": state, "blackout_active": bool(active),
-            "headline_summary": ("Source-validated scheduled USD calendar" if automated else "Verified manual calendar")
+    return {"provider": provider, "status": state, "blackout_active": bool(active),
+            "headline_summary": ("Published scheduled USD calendar; not a guarantee of completeness" if automated else "Verified manual calendar")
                 if valid else "Calendar coverage missing, stale or unsupported",
             "market_bias": "NEUTRAL", "high_impact_event_name": nearest["title"] if nearest else None,
             "minutes_to_event": nearest["minutes_to_event"] if nearest else None,
@@ -69,5 +81,5 @@ def calendar_context(db: Session, symbol: str, now: datetime, settings: Settings
             "current_time": now.isoformat(), "source": coverage.source if coverage else None,
             "verified_at": utc(coverage.verified_at).isoformat() if coverage else None,
             "fresh_until": min(utc(coverage.coverage_end), utc(coverage.verified_at)
-                + timedelta(hours=settings.news_max_age_hours)).isoformat() if coverage else None,
+                + timedelta(hours=max_age)).isoformat() if coverage else None,
             "coverage_end": utc(coverage.coverage_end).isoformat() if coverage else None}

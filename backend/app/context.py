@@ -48,7 +48,7 @@ def build_context(symbol: str, current_time: datetime | None = None) -> dict[str
 
     settings = get_settings()
     now = current_time or datetime.now(timezone.utc)
-    if settings.news_provider in {"manual", "forexfactory"}:
+    if settings.news_provider != "mock":
         with SessionLocal() as db:
             news = calendar_context(db, symbol, now, settings)
     else:
