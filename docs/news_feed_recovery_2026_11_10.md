@@ -61,7 +61,33 @@ was incorrectly used for validation. The fix compares with response-receipt
 time and uses completion time for atomic storage; no future-time tolerance is
 added. Regression tests cover an in-flight publication and genuine stale/future
 timestamps. The persisted 17:45:03 UTC retry deadline is retained, not reset
-by redeployment. A successful hosted refresh still needs to be observed.
+by redeployment.
+
+The scheduled hosted retry succeeded at **17:45:05 UTC**:
+
+- Active provider: `showmytrades`, interval 15 minutes.
+- Publisher assembly timestamp: `2026-11-10T17:45:05Z`.
+- Last successful fetch: `2026-11-10T17:45:05.982542Z`.
+- ES/NQ: CLEAR; last error null; consecutive failures zero.
+- Stored context freshness expires at `2026-11-10T19:45:05Z`; safe forward
+  coverage ends `2026-11-17T17:15:05Z` after blackout-edge trimming.
+- Next normal attempt: `2026-11-10T18:00:04.201551Z`.
+- Authenticated dashboard displays the new provider, timestamps and CLEAR status.
+- Public `/health`: HTTP 200. Unauthenticated `/dashboard`, `/status` and
+  `/context/news-calendar`: HTTP 401, as required.
+- Database and decision worker healthy, zero failed jobs. No new webhook test or
+  OpenAI request was initiated; latest decision is the old November 8 delivery test.
+
+The receipt-time fix is commit `ac9c756`; `b911961` also requires a matching
+snapshot when rolling back to manual mode. The provider implementation is
+`0cd7576`. No existing secrets or Pine files were modified.
+
+The dashboard still says **Not confirmed ready**, independently of recovered
+news. Its TradingView operator observation is older than 24 hours and therefore
+UNKNOWN. This task did not poll or modify TradingView, renew that observation,
+change its alert, or claim a new natural delivery was verified. Notifications
+also remain DISABLED. Feed recovery is not evidence that the whole signal chain
+has been freshly verified.
 
 ## Rollback
 

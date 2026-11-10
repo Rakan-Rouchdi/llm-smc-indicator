@@ -22,7 +22,7 @@ No host rotation, proxy, bypass or extra request to its rate-limited endpoint is
 used to implement the replacement. See `news_feed_recovery_2026_11_10.md` for
 deployment evidence and source spot checks.
 
-"Source-validated" means known HTTPS source, strict parsing, bounded current-week
+"Source-validated" means known HTTPS source, strict parsing, bounded declared
 coverage and publisher freshness checks. It does NOT mean each event is
 independently corroborated against primary agencies. An incomplete but structurally
 valid publisher feed cannot be detected reliably. No breaking-news, earnings,
