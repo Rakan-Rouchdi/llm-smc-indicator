@@ -148,6 +148,8 @@ def test_provider_switch_isolated_state_and_stale_block_survives_restart(client,
         # A rollback cannot silently relabel another provider's snapshot as verified.
         ff = Settings(_env_file=None, news_provider="forexfactory", require_verified_news=True)
         assert calendar_context(db, "ES", NOW, ff)["status"] == "UNKNOWN"
+        manual = Settings(_env_file=None, news_provider="manual", require_verified_news=True)
+        assert calendar_context(db, "ES", NOW, manual)["status"] == "UNKNOWN"
 
 
 def test_failed_refresh_never_relabels_old_data_fresh(client, monkeypatch):

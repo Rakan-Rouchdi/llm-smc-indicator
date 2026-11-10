@@ -52,8 +52,12 @@ def calendar_context(db: Session, symbol: str, now: datetime, settings: Settings
                      if coverage and coverage.source.startswith(prefix)), "manual")
     automated = provider in AUTO_NEWS_PROVIDERS
     max_age = max_calendar_age_hours(settings)
+    # Switching providers (including rollback to manual) requires a matching
+    # snapshot; a setting change is not verification of the old provider's data.
+    matches_provider = (provider == settings.news_provider or
+                        (not automated and settings.news_provider not in AUTO_NEWS_PROVIDERS))
     valid = bool(symbol in {"ES", "NQ"} and coverage
-                 and (settings.news_provider not in AUTO_NEWS_PROVIDERS or provider == settings.news_provider)
+                 and matches_provider
                  and utc(coverage.coverage_start) <= now < utc(coverage.coverage_end)
                  and 0 <= (now - utc(coverage.verified_at)).total_seconds() < max_age * 3600)
     active, relevant = [], []
