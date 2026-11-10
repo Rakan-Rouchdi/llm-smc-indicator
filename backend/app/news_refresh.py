@@ -220,8 +220,8 @@ def parse_rolling_snapshot(body: bytes, now: datetime, settings: Settings) -> Fe
 def fetch_snapshot(now: datetime, settings: Settings) -> FeedSnapshot:
     # A fixed official export URL avoids arbitrary-URL/credential forwarding.
     # Redirects, HTML challenges and errors fail closed; no browser scraping.
+    started = clock.monotonic()
     with httpx.Client(timeout=settings.news_fetch_timeout_seconds, follow_redirects=False) as client:
-        started = clock.monotonic()
         deadline = started + settings.news_fetch_timeout_seconds * 2
         url = SHOWMYTRADES_URL if settings.news_provider == "showmytrades" else FEED_URL
         with client.stream("GET", url, headers={"Accept": "application/json"}) as response:
@@ -239,9 +239,12 @@ def fetch_snapshot(now: datetime, settings: Settings) -> FeedSnapshot:
                 body.extend(chunk)
                 if len(body) > MAX_BYTES:
                     raise CalendarFeedError("response_too_large")
+            # A publisher can legitimately assemble a new snapshot while this
+            # request is in flight. Compare with receipt time, not request start.
+            received_at = now + timedelta(seconds=clock.monotonic() - started)
             if settings.news_provider == "showmytrades":
-                return parse_rolling_snapshot(bytes(body), now, settings)
-            return parse_snapshot(bytes(body), response.headers.get("last-modified"), now, settings)
+                return parse_rolling_snapshot(bytes(body), received_at, settings)
+            return parse_snapshot(bytes(body), response.headers.get("last-modified"), received_at, settings)
 
 
 class CalendarRefreshWorker:
@@ -263,6 +266,7 @@ class CalendarRefreshWorker:
     def run_once(self, now: datetime | None = None) -> bool:
         if self.settings.news_provider not in AUTO_NEWS_PROVIDERS:
             return False
+        fixed_clock = now is not None
         now = now or datetime.now(timezone.utc)
         interval = timedelta(minutes=self.settings.news_refresh_interval_minutes)
         attempt_id = uuid4().hex
@@ -292,7 +296,10 @@ class CalendarRefreshWorker:
             db.add(state)
             db.commit()
         try:
-            snapshot = fetch_snapshot(now, self.settings)
+            # Database claim latency is not part of transport time. Explicit
+            # timestamps remain deterministic for tests and operator simulation.
+            snapshot = fetch_snapshot(now if fixed_clock else datetime.now(timezone.utc), self.settings)
+            completed_at = now if fixed_clock else datetime.now(timezone.utc)
             with SessionLocal() as db:
                 # Conditional UPDATE locks the claim on both SQLite and PostgreSQL.
                 owned = db.execute(update(CalendarRefreshSchedule).where(
@@ -310,8 +317,8 @@ class CalendarRefreshWorker:
                         raise CalendarFeedError("publisher_version_conflict")
                 # The publisher timestamp, NOT fetch time, controls freshness.
                 # Events, coverage and successful refresh metadata commit atomically.
-                replace_calendar(db, snapshot.calendar, now, verified_at=snapshot.modified_at, commit=False)
-                state.last_success_at = now
+                replace_calendar(db, snapshot.calendar, completed_at, verified_at=snapshot.modified_at, commit=False)
+                state.last_success_at = completed_at
                 state.source_modified_at = snapshot.modified_at
                 state.content_sha256 = snapshot.digest
                 state.last_error = None

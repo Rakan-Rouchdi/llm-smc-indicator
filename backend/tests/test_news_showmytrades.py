@@ -115,6 +115,21 @@ def test_transport_fixed_public_endpoint_no_credentials(monkeypatch):
     assert "authorization" not in seen[0].headers
 
 
+@pytest.mark.parametrize("published_after_start,accepted", [(2, True), (10, False), (-7200, False)])
+def test_transport_uses_receipt_time_without_future_or_stale_tolerance(monkeypatch, published_after_start, accepted):
+    payload = feed(NOW+timedelta(seconds=published_after_start, minutes=5))
+    ticks = iter([0.0, 3.0, 3.0])
+    monkeypatch.setattr("app.news_refresh.clock.monotonic", lambda: next(ticks))
+    client_type = httpx.Client
+    transport = httpx.MockTransport(lambda _: httpx.Response(200, headers={"content-type": "application/json"}, json=payload))
+    monkeypatch.setattr("app.news_refresh.httpx.Client", lambda **kw: client_type(transport=transport, **kw))
+    if accepted:
+        assert fetch_snapshot(NOW, settings()).modified_at == NOW+timedelta(seconds=2)
+    else:
+        with pytest.raises(CalendarFeedError, match="stale_or_future"):
+            fetch_snapshot(NOW, settings())
+
+
 def test_provider_switch_isolated_state_and_stale_block_survives_restart(client, monkeypatch):
     with SessionLocal() as db:
         db.add(CalendarRefreshSchedule(id=1, next_attempt_at=NOW+timedelta(hours=8), consecutive_failures=4))

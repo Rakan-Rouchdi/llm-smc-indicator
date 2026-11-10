@@ -49,13 +49,19 @@ omitted scheduled speeches, or documented multi-day schedule correction delays.
 
 ## Verification
 
-Baseline: 183 passing tests. Replacement implementation: 217 passing tests,
+Baseline: 183 passing tests. Replacement implementation: 220 passing tests,
 zero failures, one existing Starlette/httpx deprecation warning. Includes synthetic
 webhook-to-decision tests proving stale and blackout data produce NO_TRADE and
 skip the LLM, while a fresh clear fixture processes normally.
 
-Production rollout verification is pending. Do not treat a successful local
-probe or test suite as evidence that the Render worker can reach this source.
+Render deployed `0cd7576` and synchronized the three non-secret news settings.
+Its first request at 17:15:03 UTC reached the new publisher but rejected a
+publication generated at 17:15:06 UTC. Investigation found request-start time
+was incorrectly used for validation. The fix compares with response-receipt
+time and uses completion time for atomic storage; no future-time tolerance is
+added. Regression tests cover an in-flight publication and genuine stale/future
+timestamps. The persisted 17:45:03 UTC retry deadline is retained, not reset
+by redeployment. A successful hosted refresh still needs to be observed.
 
 ## Rollback
 
