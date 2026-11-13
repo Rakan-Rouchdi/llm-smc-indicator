@@ -91,6 +91,9 @@ def evaluation_summary(db, limit=500):
             for row in db.query(ForwardReviewRecord).filter(ForwardReviewRecord.decision_id.in_(decision_ids)).order_by(
                     ForwardReviewRecord.recorded_at.desc(), ForwardReviewRecord.id.desc()):
                 reviews.setdefault(row.decision_id, row)
+    from app.outcome_tracking import latest_automatic
+    automatic = latest_automatic(db, [d.id for d in decisions.values()])
+    automatic_counts = Counter()
     excluded, counts, eligible = Counter(), Counter(), 0
     for setup in setups:
         payload = _object(setup.payload_json)
@@ -110,8 +113,11 @@ def evaluation_summary(db, limit=500):
             eligible += 1
             outcome = reviews.get(decision.id) or outcomes.get(setup.setup_id)
             counts[outcome.outcome if outcome else "UNRECORDED"] += 1
+            if decision.id in automatic:
+                automatic_counts[automatic[decision.id]["outcome"]] += 1
     return {"scope": f"Newest {limit} received setups; latest decision and outcome per setup",
             "reviewed_setups": len(setups), "eligible_candidates": eligible,
             "excluded": dict(excluded), "manual_outcomes": dict(counts),
+            "automatic_paper_outcomes": dict(automatic_counts),
             "accuracy_status": "NOT_ESTABLISHED",
             "limitations": "Manual outcomes do not verify fills, costs or profitability. Delivery tests and legacy/fallback decisions are excluded."}

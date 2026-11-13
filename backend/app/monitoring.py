@@ -15,6 +15,7 @@ from app.news import calendar_context, utc
 from app.news_refresh import refresh_status
 from app.notifier import destination
 from app.workflow import get_latest_decision_record
+from app.outcome_tracking import outcome_feed_status
 
 logger = logging.getLogger(__name__)
 _receipts = deque(maxlen=500)
@@ -89,6 +90,7 @@ def operational_status(db, settings, worker=None, now=None):
     alive = bool(worker and worker.thread.is_alive())
     ready = alive and not counts.get("FAILED", 0) and age <= settings.max_setup_age_minutes * 60
     return {"database": "ok", "worker_alive": alive, "service_ready": ready,
+            "outcome_tracking": outcome_feed_status(db, settings),
             "armed": ready and alert["status"] in {"ACTIVE", "EXPIRING"} and all(v == "CLEAR" for v in news.values()),
             "jobs": counts, "oldest_pending_seconds": round(age, 1), "notifications": notifications,
             "notification_delivery": "DISABLED" if not settings.enable_notifications else "CONFIGURED" if destination(settings) else "NOT_CONFIGURED",

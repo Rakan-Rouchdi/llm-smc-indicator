@@ -10,8 +10,10 @@ from sqlalchemy.orm import Session
 from app.auth import require_dashboard_auth
 from app.database import get_db
 from app.delivery import _object, delivery_report
-from app.models import ForwardReviewRecord, LLMDecisionRecord, SetupAlertRecord
+from app.models import AutoOutcomeRecord, ForwardReviewRecord, LLMDecisionRecord, SetupAlertRecord
 from app.news import utc
+from app.config import get_settings
+from app.outcome_tracking import latest_automatic, outcome_feed_status
 
 # Start of the approved revision-19 alert, not a retrospective best-performing window.
 COHORT_START = datetime(2026, 11, 13, 17, 10, 12, tzinfo=timezone.utc)
@@ -78,6 +80,7 @@ def forward_ledger(db, limit=50, offset=0):
                 ForwardReviewRecord.recorded_at.desc(), ForwardReviewRecord.id.desc()):
             reviews.setdefault(r.decision_id, serialize_review(r))
     rows = []
+    automatic = latest_automatic(db, decision_ids)
     for s in setups:
         d = decisions.get(s.setup_id)
         rows.append({"id": s.id, "setup_id": s.setup_id, "symbol": s.symbol, "timeframe": s.timeframe,
@@ -88,9 +91,11 @@ def forward_ledger(db, limit=50, offset=0):
             "reason": d.validation_rejection_reason or d.reason_summary if d else None,
             "entry": d.entry_preferred if d else None, "sl": d.stop_loss if d else None,
             "tp1": d.take_profit_1 if d else None,
-            "delivery": delivery_report(db, s, d), "review": reviews.get(d.id) if d else None})
+            "delivery": delivery_report(db, s, d), "review": reviews.get(d.id) if d else None,
+            "automatic": automatic.get(d.id) if d else None})
     return {"cohort_start": COHORT_START.isoformat(), "total_receipts": total,
-            "limit": limit, "offset": offset, "rows": rows, "accuracy_status": "NOT_ESTABLISHED"}
+            "limit": limit, "offset": offset, "rows": rows, "accuracy_status": "NOT_ESTABLISHED",
+            "outcome_feed": outcome_feed_status(db, get_settings())}
 
 
 @router.get("/forward-testing")
@@ -137,3 +142,13 @@ def save_review(decision_id: int, body: ForwardReview, db: Annotated[Session, De
 def review_history(decision_id: int, db: Annotated[Session, Depends(get_db)]):
     return {"reviews": [serialize_review(r) for r in db.query(ForwardReviewRecord).filter_by(
         decision_id=decision_id).order_by(ForwardReviewRecord.recorded_at.desc(), ForwardReviewRecord.id.desc())]}
+
+
+@router.get("/forward-testing/decisions/{decision_id}/automatic")
+def automatic_history(decision_id: int, db: Annotated[Session, Depends(get_db)],
+                      offset: int = Query(0, ge=0)):
+    rows = db.query(AutoOutcomeRecord).filter_by(decision_id=decision_id).order_by(
+        AutoOutcomeRecord.data_version.desc(), AutoOutcomeRecord.evaluated_at.desc(), AutoOutcomeRecord.id.desc()).offset(offset).limit(100)
+    return {"evaluations": [{"evaluated_at": utc(r.evaluated_at).isoformat(),
+        "evidence_hash": r.evidence_hash, "result": _object(r.result_json)} for r in rows],
+        "offset": offset, "limit": 100}

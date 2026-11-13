@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = None
     telegram_chat_id: str | None = None
     enable_notifications: bool = False
+    outcome_tracking_enabled: bool = False
+    outcome_feed_id: str = ""
+    outcome_feed_symbol: Literal["CME_MINI_DL:NQ1!", "CME_MINI:NQ1!", "CME_MINI_DL:ES1!", "CME_MINI:ES1!"] = "CME_MINI_DL:NQ1!"
     timezone: str = "America/New_York"
 
     model_config = SettingsConfigDict(
@@ -72,6 +75,8 @@ class Settings(BaseSettings):
     def automated_news_requires_freshness_gate(self):
         if self.news_provider in AUTO_NEWS_PROVIDERS and not self.require_verified_news:
             raise ValueError("Automatic news requires REQUIRE_VERIFIED_NEWS=true")
+        if self.outcome_tracking_enabled and not self.require_verified_news:
+            raise ValueError("Automatic outcome tracking requires REQUIRE_VERIFIED_NEWS=true")
         return self
 
 

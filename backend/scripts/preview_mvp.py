@@ -22,6 +22,7 @@ def preview_environment(database_path: Path) -> dict[str, str]:
         "LLM_PROVIDER": "mock", "OPENAI_API_KEY": "", "NEWS_PROVIDER": "manual",
         "REQUIRE_VERIFIED_NEWS": "true", "NEWS_MAX_AGE_HOURS": "24",
         "ENABLE_NOTIFICATIONS": "false", "NOTIFICATION_WEBHOOK_URL": "", "TELEGRAM_BOT_TOKEN": "",
+        "OUTCOME_TRACKING_ENABLED": "false", "OUTCOME_FEED_ID": "",
         "TELEGRAM_CHAT_ID": "", "DECISION_WORKER_ENABLED": "false",
         "MIN_RULE_SCORE": "75", "CONFIRMATION_MAX_BARS": "6", "MAX_SETUP_AGE_MINUTES": "15",
     }

@@ -20,6 +20,8 @@ def isolate_external_credentials(monkeypatch):
     monkeypatch.setenv("NOTIFICATION_WEBHOOK_URL", "")
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "")
+    monkeypatch.setenv("OUTCOME_TRACKING_ENABLED", "false")
+    monkeypatch.setenv("OUTCOME_FEED_ID", "")
 
 
 @pytest.fixture
