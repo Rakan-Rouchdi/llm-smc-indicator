@@ -1,4 +1,5 @@
 import json
+import hashlib
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -17,6 +18,11 @@ from app.workflow import serialize_decision, serialize_setup
 router = APIRouter()
 
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parents[1] / "templates"))
+# Content versions prevent a returning browser from combining new HTML with cached CSS/JS.
+templates.env.globals["asset_versions"] = {
+    name: hashlib.sha256((Path(__file__).resolve().parents[1] / "static" / name).read_bytes()).hexdigest()[:12]
+    for name in ("app.css", "forward_testing.js")
+}
 
 
 def _pretty(payload: Any) -> str:

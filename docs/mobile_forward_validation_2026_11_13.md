@@ -48,11 +48,21 @@ manual evidence rules, API and rollback. New append-only review and notification
 attempt tables are additive. News policy, credential files, alert configuration,
 Pine logic and trade/broker functions were not changed or used.
 
-Baseline: 273 tests passed. Expanded suite: 291 passed, 0 failed, with the
+Baseline: 273 tests passed. Expanded suite: 292 passed, 0 failed, with the
 existing Starlette/httpx deprecation warning.
 All previews used disposable SQLite, mock LLM, no .env loading and no outbound
 notifications. UI success is not evidence of a new natural market signal.
 
-Deployment is a separate approval step. These checks validate the local changed
-application; they do not claim the hosted service contains this code before a
-successful approved deployment and hosted route verification.
+## Approved Deployment
+
+The user approved deployment after tests. PR #11 merged as `6bb6c99`; Render
+deployment 7773515281 succeeded at 18:43:35 UTC. The hosted ledger rendered the
+one existing blocked DELIVERY_TEST receipt, not a fabricated natural result.
+Public health was 200; dashboard, ledger and review endpoints required auth
+(401 without credentials). Hosted CSS and JavaScript matched the committed bytes.
+
+The returning authenticated Chrome session still reused the old stylesheet:
+390px viewport, 553px document width. This was a real deployment-cache problem,
+not a passing mobile check. Added content-hashed CSS/JS URLs to every template
+and a regression test so fresh HTML cannot silently reuse the prior assets.
+Post-fix deployment and hosted recheck evidence is recorded on the follow-up PR.
