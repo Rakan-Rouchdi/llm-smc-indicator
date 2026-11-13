@@ -18,8 +18,9 @@ from app.auth import require_dashboard_auth
 from app.dashboard import router as dashboard_router
 from app.delivery import delivery_report, evaluation_summary
 from app.database import get_db, init_db
-from app.models import DecisionJobRecord, LLMDecisionRecord, SetupAlertRecord, AlertObservationRecord, NotificationRecord
+from app.models import DecisionJobRecord, LLMDecisionRecord, SetupAlertRecord, AlertObservationRecord, NotificationRecord, NotificationProbeRecord
 from app.monitoring import ReceiptTimingMiddleware, operational_status
+from app.notification_probe import NotificationProbe, run_probe, serialize_probe
 from app.news import replace_calendar, calendar_context
 from app.news_refresh import CalendarRefreshWorker
 from app.logging_config import protect_access_logs
@@ -206,6 +207,19 @@ def notification_status(db: Annotated[Session, Depends(get_db)]):
 @app.get("/evaluation", dependencies=[Depends(require_dashboard_auth)])
 def evaluate_outcomes(db: Annotated[Session, Depends(get_db)]):
     return evaluation_summary(db)
+
+
+@app.post("/notifications/test", dependencies=[Depends(require_dashboard_auth)])
+def test_notification(payload: NotificationProbe, db: Annotated[Session, Depends(get_db)]):
+    return run_probe(db, get_settings(), payload.test_id)
+
+
+@app.get("/notifications/tests/{test_id}", dependencies=[Depends(require_dashboard_auth)])
+def get_notification_test(test_id: str, db: Annotated[Session, Depends(get_db)]):
+    row = db.get(NotificationProbeRecord, test_id)
+    if row is None:
+        raise HTTPException(404, "Notification test not found")
+    return serialize_probe(row)
 
 
 @app.post("/webhook/tradingview")
