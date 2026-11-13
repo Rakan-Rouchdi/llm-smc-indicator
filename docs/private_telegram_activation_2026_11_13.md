@@ -91,7 +91,9 @@ Verified after activation:
   not call the model. Safe fallback and deterministic validation remain active.
 - The dashboard shows `0 sent` for final trading notifications. That is correct:
   transport tests have a separate audit table and are not counted as candidates.
-- Final local suite: 271 passed, 0 failed; one existing deprecation warning.
+- Final local suite: 273 passed, 0 failed; one existing deprecation warning.
+  Additional logging regressions cover path-only and bare-token debug messages,
+  not just full Telegram API URLs. No actual token exposure was observed.
 - `.env` and `backend/.env` remain ignored/untracked and were not edited.
 
 No natural TradingView-to-approved-BUY/SELL notification occurred during setup.
