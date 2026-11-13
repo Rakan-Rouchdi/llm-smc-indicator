@@ -40,6 +40,8 @@
         <p class="reason">Processing error: {{ job.last_error }}. Attempts: {{ job.attempts }}.</p>
       {% endif %}
 
+      {% include "_delivery.html" %}
+
       <section class="two-column">
         <article class="panel">
           <h2>SMC Features</h2>
@@ -82,6 +84,7 @@
 
       <section class="panel">
         <h2>Decisions</h2>
+        <p>Setup quality is not a win probability.</p>
         <div class="table-wrap">
           <table>
             <thead>
@@ -89,7 +92,7 @@
                 <th>Created</th>
                 <th>Model</th>
                 <th>Action</th>
-                <th>Confidence</th>
+                <th>Setup quality</th>
                 <th>Entry</th>
                 <th>SL</th>
                 <th>TP1</th>

@@ -1,0 +1,18 @@
+{% if delivery %}
+<section class="operations" aria-labelledby="delivery-title">
+  <h2 id="delivery-title">Delivery evidence</h2>
+  <dl class="operations-grid">
+    <div><dt>Source</dt><dd>{{ delivery.source }}</dd></div>
+    <div><dt>Market data</dt><dd>{{ delivery.market_data }}</dd></div>
+    <div><dt>Detector revision</dt><dd>{{ delivery.detector_revision }}</dd></div>
+    <div><dt>Close to receipt</dt><dd>{{ (delivery.close_to_receipt_ms ~ " ms") if delivery.close_to_receipt_ms is not none else "Not measured" }}</dd></div>
+    <div><dt>Receipt to processing</dt><dd>{{ (delivery.receipt_to_processing_ms ~ " ms") if delivery.receipt_to_processing_ms is not none else "Not measured" }}</dd></div>
+    <div><dt>Model / preflight duration</dt><dd>{{ (delivery.provider_ms ~ " ms") if delivery.provider_ms is not none else "Not measured" }}</dd></div>
+    <div><dt>Receipt to decision record</dt><dd>{{ (delivery.receipt_to_decision_record_ms ~ " ms") if delivery.receipt_to_decision_record_ms is not none else "Not measured" }}</dd></div>
+    <div><dt>Final notification</dt><dd>{{ delivery.notification.status }} | {{ delivery.notification.attempts }} attempts</dd></div>
+    <div><dt>Timing validity</dt><dd>{{ delivery.timing_status }}</dd></div>
+  </dl>
+  {% if delivery.notification.reason %}<p class="warning">Notification: {{ delivery.notification.reason }}</p>{% endif %}
+  <p>Close-to-receipt includes feed and transport delay. Decision timestamps precede database commit; public webhook acknowledgement and phone delivery times are not measured here.</p>
+</section>
+{% endif %}

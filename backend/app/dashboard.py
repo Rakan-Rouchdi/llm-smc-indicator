@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth import require_dashboard_auth
 from app.config import get_settings
+from app.delivery import delivery_report, evaluation_summary
 from app.monitoring import operational_status
 from app.database import get_db
 from app.models import DecisionJobRecord, LLMDecisionRecord, SetupAlertRecord
@@ -55,6 +56,8 @@ def index(
             "operations": operational_status(db, get_settings(), getattr(request.app.state, "decision_worker", None)),
             "latest_setup": serialized_setup,
             "latest_decision": serialized_decision,
+            "delivery": delivery_report(db, setup, decision) if setup else None,
+            "evaluation": evaluation_summary(db),
             "processing_error": job.last_error if job else None,
             "news_context": context.get("news") if isinstance(context, dict) else None,
             "telegram_context": context.get("telegram") if isinstance(context, dict) else None,
@@ -100,6 +103,7 @@ def setup_detail(
             "request": request,
             "setup": serialized_setup,
             "decisions": serialized_decisions,
+            "delivery": delivery_report(db, record, decisions[0] if decisions else None),
             "job": db.get(DecisionJobRecord, record.setup_id),
             "news_context": context.get("news") if isinstance(context, dict) else None,
             "telegram_context": context.get("telegram") if isinstance(context, dict) else None,

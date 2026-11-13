@@ -16,6 +16,7 @@ from starlette.concurrency import run_in_threadpool
 from app.config import AUTO_NEWS_PROVIDERS, Settings, get_settings
 from app.auth import require_dashboard_auth
 from app.dashboard import router as dashboard_router
+from app.delivery import delivery_report, evaluation_summary
 from app.database import get_db, init_db
 from app.models import DecisionJobRecord, LLMDecisionRecord, SetupAlertRecord, AlertObservationRecord, NotificationRecord
 from app.monitoring import ReceiptTimingMiddleware, operational_status
@@ -134,6 +135,7 @@ def get_setup(setup_identifier: str, db: Annotated[Session, Depends(get_db)]) ->
         "setup": serialize_setup(record),
         "decisions": [serialize_decision(decision) for decision in decisions],
         "job": _job_status(db.get(DecisionJobRecord, record.setup_id)),
+        "delivery": delivery_report(db, record, decisions[0] if decisions else None),
     }
 
 
@@ -199,6 +201,11 @@ def notification_status(db: Annotated[Session, Depends(get_db)]):
     rows = db.query(NotificationRecord).order_by(NotificationRecord.id.desc()).limit(100).all()
     return {"notifications": [{"id": r.id, "decision_id": r.decision_id, "status": r.status,
                                 "attempts": r.attempts, "last_error": r.last_error} for r in rows]}
+
+
+@app.get("/evaluation", dependencies=[Depends(require_dashboard_auth)])
+def evaluate_outcomes(db: Annotated[Session, Depends(get_db)]):
+    return evaluation_summary(db)
 
 
 @app.post("/webhook/tradingview")
