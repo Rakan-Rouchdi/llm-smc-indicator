@@ -13,6 +13,7 @@ from app.database import SessionLocal
 from app.models import DecisionJobRecord, SetupAlertRecord, NotificationRecord
 from app.notifier import deliver_one
 from app.workflow import process_tradingview_alert
+from app.outcome_tracking import evaluate_outcomes_once
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,7 @@ class DecisionWorker:
                                       NotificationRecord.lease_until).where(
                 NotificationRecord.status.in_(["QUEUED", "PROCESSING"]),
             )).all()
-        delays = [3600.0]
+        delays = [300.0 if self.settings.outcome_tracking_enabled else 3600.0]
         for status, available, lease in jobs:
             due = lease if status == "PROCESSING" else available
             if due is not None:
@@ -115,6 +116,7 @@ class DecisionWorker:
                     deliver_one(self.settings)
                 while not self._stop.is_set() and deliver_one(self.settings):
                     pass
+                evaluate_outcomes_once(self.settings)
                 delay = self._next_delay()
             except Exception as exc:
                 logger.error("decision_worker_unavailable error_type=%s", type(exc).__name__)

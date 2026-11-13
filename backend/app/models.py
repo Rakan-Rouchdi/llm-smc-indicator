@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, Integer, String, Text
+from sqlalchemy import DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -194,3 +194,28 @@ class ForwardReviewRecord(Base):
     entry_status: Mapped[str] = mapped_column(String(30))
     source_verified: Mapped[int] = mapped_column(Integer)
     notes: Mapped[str] = mapped_column(Text)
+
+
+class PriceBarRecord(Base):
+    __tablename__ = "outcome_price_bars"
+    __table_args__ = (UniqueConstraint("feed_id", "symbol", "open_time"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    feed_id: Mapped[str] = mapped_column(String(80), index=True)
+    symbol: Mapped[str] = mapped_column(String(100), index=True)
+    open_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    close_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    payload_json: Mapped[str] = mapped_column(Text)
+    conflict_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class AutoOutcomeRecord(Base):
+    __tablename__ = "automatic_outcome_evaluations"
+    __table_args__ = (UniqueConstraint("decision_id", "evidence_hash"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    decision_id: Mapped[int] = mapped_column(Integer, index=True)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    data_version: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    evidence_hash: Mapped[str] = mapped_column(String(64))
+    result_json: Mapped[str] = mapped_column(Text)

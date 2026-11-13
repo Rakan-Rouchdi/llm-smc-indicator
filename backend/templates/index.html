@@ -205,6 +205,8 @@
           <div><dt>Manual EXPIRED / UNKNOWN</dt><dd>{{ evaluation.manual_outcomes.get("EXPIRED", 0) }} / {{ evaluation.manual_outcomes.get("UNKNOWN", 0) }}</dd></div>
           <div><dt>Delivery tests excluded</dt><dd>{{ evaluation.excluded.get("delivery_test", 0) }}</dd></div>
           <div><dt>Predictive accuracy</dt><dd>NOT ESTABLISHED</dd></div>
+          <div><dt>Automatic paper WIN / LOSS</dt><dd>{{ evaluation.automatic_paper_outcomes.get("WIN", 0) }} / {{ evaluation.automatic_paper_outcomes.get("LOSS", 0) }}</dd></div>
+          <div><dt>Automatic EXPIRED / UNKNOWN</dt><dd>{{ evaluation.automatic_paper_outcomes.get("EXPIRED", 0) }} / {{ evaluation.automatic_paper_outcomes.get("UNKNOWN", 0) }}</dd></div>
         </dl>
         <p>{{ evaluation.scope }}. {{ evaluation.limitations }}</p>
       </section>

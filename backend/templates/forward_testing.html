@@ -18,6 +18,8 @@
     <p>Started {{ ledger.cohort_start }} | {{ ledger.total_receipts }} receipts, including excluded tests and blocked candidates.</p>
     <p>News freshness, blackout and deterministic approval gates remain in force. Source is unverified until matched against the TradingView alert log.</p>
     <a href="/forward-testing?limit=100&amp;offset={{ ledger.offset }}">JSON records</a>
+    <p>Automatic paper tracking: {{ ledger.outcome_feed.status }} | {{ ledger.outcome_feed.symbol }}</p>
+    <p>Latest price bar (UTC): {{ ledger.outcome_feed.latest_bar_close or "Not received" }}</p>
   </section>
   {% for row in ledger.rows %}
   <article class="ledger-row">
@@ -34,9 +36,13 @@
       <div><dt>Notification API status</dt><dd>{{ row.delivery.notification.status }}</dd></div>
       <div><dt>Receipt to notification API acceptance</dt><dd>{{ (row.delivery.notification.receipt_to_api_acceptance_ms ~ " ms") if row.delivery.notification.receipt_to_api_acceptance_ms is not none else "Not measured" }}</dd></div>
       <div><dt>Entry / SL / TP1 (unfilled)</dt><dd>{{ row.entry }} / {{ row.sl }} / {{ row.tp1 }}</dd></div>
-      <div><dt>Latest paper outcome</dt><dd>{{ row.review.outcome if row.review else "UNRECORDED" }}</dd></div>
+      <div><dt>Automatic paper outcome</dt><dd>{{ row.automatic.outcome if row.automatic else "UNKNOWN" }}</dd></div>
+      <div><dt>Automatic evidence</dt><dd>{{ row.automatic.reason if row.automatic else ("NOT_EVALUATED" if row.cohort_status == "ELIGIBLE_PAPER_REVIEW" else "NOT_ELIGIBLE") }}</dd></div>
+      <div><dt>Manual annotation</dt><dd>{{ row.review.outcome if row.review else "UNRECORDED" }}</dd></div>
     </dl>
     <p>{{ row.reason or "Processing has not produced a decision." }}</p>
+    {% if row.automatic %}<p>Evaluated {{ row.automatic.evaluated_at }} | {{ row.automatic.bar_count }} bars | {{ row.automatic.method }}. Bar-range observations, not verified fills.</p>{% endif %}
+    {% if row.automatic %}<a href="/forward-testing/decisions/{{ row.decision_id }}/automatic">Automatic evidence history</a>{% endif %}
     {% if row.review %}
     <p>Observed until {{ row.review.observed_until }} | Entry {{ row.review.entry_status }} | Source {{ "operator-confirmed" if row.review.source_verified else "unverified" }}</p>
     <p>{{ row.review.notes }}</p>

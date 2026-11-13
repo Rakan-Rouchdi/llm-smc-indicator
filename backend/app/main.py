@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from starlette.concurrency import run_in_threadpool
 
 from app.config import AUTO_NEWS_PROVIDERS, Settings, get_settings
@@ -27,6 +28,8 @@ from app.news_refresh import CalendarRefreshWorker
 from app.logging_config import protect_access_logs
 from app.schemas import SetupAlert, CalendarUpdate, AlertObservation
 from app.worker import DecisionWorker
+from app.outcome_engine import PriceBatch
+from app.outcome_tracking import store_price_batch
 from app.schema_validation import format_schema_error, validate_setup_alert_schema
 from app.schemas import OutcomeUpdate
 from app.workflow import (
@@ -115,6 +118,33 @@ def list_setups(
         .all()
     )
     return {"setups": [serialize_setup(record) for record in records]}
+
+
+@app.post("/webhooks/tradingview/prices", status_code=202)
+async def price_webhook(request: Request, db: Annotated[Session, Depends(get_db)],
+    x_webhook_secret: Annotated[str | None, Header()] = None, secret: str | None = None):
+    settings = get_settings()
+    _authenticate(x_webhook_secret, secret, settings)
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > 32768:
+            raise HTTPException(413, "Price batch exceeds 32 KiB")
+    try:
+        batch = PriceBatch.model_validate_json(bytes(body))
+    except ValueError:
+        raise HTTPException(422, "Invalid price batch schema")
+    try:
+        result = await run_in_threadpool(store_price_batch, db, batch, settings, datetime.now(timezone.utc))
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, "Concurrent price batch; replay safely")
+    worker = getattr(request.app.state, "decision_worker", None)
+    if worker:
+        worker.notify()
+    return result
 
 
 @app.get("/setups/{setup_identifier}", dependencies=[Depends(require_dashboard_auth)])

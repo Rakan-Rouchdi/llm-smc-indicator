@@ -1,0 +1,41 @@
+//@version=6
+indicator("SMC Paper Price Feed", overlay = true)
+
+// Separate read-only telemetry. No setups, approvals, orders or broker calls.
+// The existing SMC candidate detector and its 4h alert remain unchanged.
+bool enabled = input.bool(false, "Enable paper price feed")
+string feedId = input.string("nq-paper-v1", "Feed ID")
+bool supported = chart.is_standard and timeframe.isminutes and timeframe.multiplier == 5 and (syminfo.root == "ES" or syminfo.root == "NQ")
+
+f_time(int t) =>
+    str.format_time(t, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC")
+
+// Explicit, unadjusted standard futures prices. The backend verifies the setup
+// close against this feed and refuses contract-roll or price-basis mismatches.
+string standard = ticker.standard(syminfo.tickerid)
+string sourceTicker = ticker.modify(standard, session = session.extended, backadjustment = backadjustment.off, settlement_as_close = settlement_as_close.off)
+[opensAt, closesAt, opens, highs, lows, closes, contracts] = request.security_lower_tf(sourceTicker, "1", [time, time_close, open, high, low, close, syminfo.current_contract], ignore_invalid_timeframe = true)
+var array<string> history = array.new_string()
+if supported and barstate.isconfirmed
+    // Retain twenty minute bars to repair a small number of missed deliveries.
+    // Missing minutes/holidays are not synthesized. Backend gaps remain UNKNOWN.
+    if array.size(opensAt) > 0
+        for i = 0 to array.size(opensAt) - 1
+            string contract = array.get(contracts, i)
+            if not na(contract) and str.length(contract) > 0
+                string row = "{\"open_time\":\"" + f_time(array.get(opensAt, i)) + "\",\"close_time\":\"" + f_time(array.get(closesAt, i)) + "\",\"contract\":\"" + contract + "\""
+                row += ",\"open\":" + str.tostring(array.get(opens, i), format.mintick) + ",\"high\":" + str.tostring(array.get(highs, i), format.mintick)
+                row += ",\"low\":" + str.tostring(array.get(lows, i), format.mintick) + ",\"close\":" + str.tostring(array.get(closes, i), format.mintick) + "}"
+                array.push(history, row)
+                if array.size(history) > 20
+                    array.shift(history)
+    // Only the real-time confirmed 5m close can send, at most once per bar.
+    if enabled and barstate.isrealtime and array.size(history) > 0
+        string payload = "{\"schema_version\":\"1.0\",\"source\":\"tradingview_price_feed\",\"feed_revision\":\"paper_ohlcv_v1\",\"feed_id\":\"" + feedId + "\""
+        payload += ",\"symbol\":\"" + standard + "\",\"price_basis\":\"standard_unadjusted\",\"emitted_at\":\"" + f_time(timenow) + "\",\"bars\":[" + array.join(history, ",") + "]}"
+        alert(payload, alert.freq_once_per_bar_close)
+
+var table diagnostic = table.new(position.bottom_right, 1, 2)
+if barstate.islast
+    table.cell(diagnostic, 0, 0, "Paper price feed: " + (enabled ? "ON" : "OFF"))
+    table.cell(diagnostic, 0, 1, supported ? "1m evidence / 5m batches" : "Requires standard ES/NQ 5m")
