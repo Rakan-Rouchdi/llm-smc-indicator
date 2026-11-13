@@ -24,7 +24,10 @@ from predictive accuracy, delivery guarantees and live trading results.
   safety cases, notification serialization, worker/outbox integration,
   authentication, cohort exclusion, probe safety and unknown timing.
 - Pine check: zero errors and zero warnings. Pine logic was not modified.
-- Desktop and 390px mobile dashboard checks passed without horizontal overflow.
+- Desktop dashboard and detail checks passed without horizontal overflow.
+  The attempted 390px browser override did not actually resize the page
+  (`innerWidth` remained 1496). Mobile visual verification is incomplete; the
+  desktop capture was renamed rather than mislabeled as mobile evidence.
 
 ## Approved Alert Replacement
 
@@ -96,14 +99,42 @@ meaningful sample. `accuracy_status` remains NOT_ESTABLISHED. Order blocks,
 gold qualification, full SMT pivot matching and live Telegram sentiment remain
 outside this change. This is not ready to market as proven paid trading signals.
 
-Backend deployment was approved after the local tests. The deployment result
-will be recorded below after hosted verification. No trades, broker/replay
-actions, paid model tests or secret-file edits were performed.
+No trades, broker/replay actions, paid model tests or secret-file edits were
+performed. `.env` and `backend/.env` remain ignored and untracked.
+
+## Hosted Deployment Verification
+
+User approved deployment with external notifications disabled. PR #6 merged
+at 17:20:27 UTC (`eb4b779`), preserving separate implementation commits
+`c513f9b` (notification gates) and `9d46bf3` (delivery/evaluation). Render's
+GitHub deployment status reported success at 17:21:33 UTC. The new features
+were then verified on the hosted service, not just in the local checkout:
+
+- `/health`: `status=ok`.
+- `/status`: database OK, worker alive, service ready, no pending backlog,
+  notifications DISABLED, alert `6067103295` ACTIVE. Approvals not armed while
+  ES/NQ were BLACKOUT. Automatic refresh remained enabled and error-free.
+- `/evaluation`: 14 reviewed setups, five delivery tests and nine legacy
+  revisions excluded, zero eligible current-revision candidates,
+  `accuracy_status=NOT_ESTABLISHED`.
+- `/setups/{probe_id}`: job DONE, one attempt, saved decision and new delivery
+  evidence present. Receipt-to-decision-record 2888.67 ms, notification
+  NOT_ENQUEUED as expected for the blocked delivery test.
+- Hosted dashboard renders the new delivery evidence and setup-quality wording.
+- Final TradingView MCP listing: exactly one active alert, revision 19, test
+  mode off, `last_fired=null`. No fresh natural-origin delivery was verified.
+
+Render's browser session was signed into a workspace without access to this
+service. Deployment was verified through the repository's Render deployment
+status and the authenticated hosted application instead; no account settings
+or credentials were changed. The Render integration's deployment metadata uses
+an older branch reference, so hosted feature checks were required rather than
+assuming that metadata alone proved the newly deployed code.
 
 ## Screenshots
 
 Temporary local proof images (not committed, may be cleaned by macOS):
 
 - `/tmp/smc-delivery-desktop-2026-11-13.jpg`
-- `/tmp/smc-delivery-mobile-2026-11-13.jpg`
+- `/tmp/smc-delivery-detail-desktop-2026-11-13.jpg`
 - `/tmp/smc-live-delivery-2026-11-13.jpg`
