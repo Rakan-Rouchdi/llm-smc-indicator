@@ -1,16 +1,16 @@
 """Final-decision outbox. Ambiguous delivery is held, never blindly replayed."""
 import hashlib
-import json
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 import httpx
 from sqlalchemy import select, update
 
+from app.config import AUTO_NEWS_PROVIDERS
 from app.database import SessionLocal
 from app.models import LLMDecisionRecord, NotificationRecord, SetupAlertRecord
 from app.news import calendar_context, utc
-from app.schemas import SetupAlert
+from app.schemas import LLMTradeDecision, SetupAlert
 from app.timing import setup_timing
 
 
@@ -45,9 +45,18 @@ def enqueue_notification(db, setup, decision, settings, context):
     db.add(NotificationRecord(decision_id=decision.id, channel=target[0], destination_hash=target[2]))
 
 
+def telegram_text(payload):
+    return (f"SMC reviewed candidate: {payload['action']} {payload['symbol']} ({payload['timeframe']}m)\n"
+            f"Setup quality: {payload['confidence']}/100 (not a win probability)\n"
+            f"Entry (unfilled): {payload['entry']}\nSL: {payload['stop_loss']}\n"
+            f"TP1: {payload['take_profit']} | RR: {payload['risk_reward']}\n"
+            f"Reason: {payload['reason']}\nSetup: {payload['setup_id']}\n"
+            "Decision support only. Human review required; no order placed.")
+
+
 def send_message(target, payload, settings):
     body = payload if target[0] == "webhook" else {
-        "chat_id": settings.telegram_chat_id, "text": json.dumps(payload),
+        "chat_id": settings.telegram_chat_id, "text": telegram_text(payload),
     }
     with httpx.Client(timeout=settings.notification_timeout_seconds, follow_redirects=False, trust_env=False) as client:
         response = client.post(target[1], json=body,
@@ -55,6 +64,30 @@ def send_message(target, payload, settings):
         if target[0] == "telegram" and response.is_success and response.json().get("ok") is not True:
             return 502
         return response.status_code
+
+
+def suppression_reason(db, row, decision, setup, output, target, settings, now):
+    if target is None:
+        return "Notification delivery disabled or unconfigured"
+    if target[2] != row.destination_hash:
+        return "Notification destination changed"
+    if (decision.validator_status != "APPROVED" or decision.final_action not in {"BUY", "SELL"}
+            or output.action.value != decision.final_action or output.setup_id != setup.setup_id):
+        return "Decision is not an approved matching trade candidate"
+    if decision.model.startswith(("mock", "deterministic")) or setup.diagnostics.get("test_mode") is True:
+        return "Test or fallback decision cannot be notified"
+    if not 0 <= setup_timing(setup, now)["age_minutes"] <= settings.max_setup_age_minutes:
+        return "Setup is stale or has not closed"
+    if output.expires_at and (output.expires_at.tzinfo is None or utc(output.expires_at) <= now):
+        return "Decision expiry is invalid or elapsed"
+    # Reuse the same provider-matched, bounded snapshot as final validation.
+    # A successful fetch alone is not evidence that a calendar remains CLEAR.
+    if settings.news_provider not in {"manual", *AUTO_NEWS_PROVIDERS}:
+        return "Verified news provider required"
+    state = calendar_context(db, setup.root_symbol.value, now, settings)["status"]
+    if state != "CLEAR":
+        return f"News safety gate: {state}"
+    return None
 
 
 def deliver_one(settings, sender=send_message):
@@ -79,29 +112,29 @@ def deliver_one(settings, sender=send_message):
             return False
         row = db.get(NotificationRecord, row_id)
         decision = db.get(LLMDecisionRecord, row.decision_id)
-        source = db.query(SetupAlertRecord).filter_by(setup_id=decision.setup_id).one()
-        setup = SetupAlert.model_validate_json(source.payload_json)
-        output = json.loads(decision.raw_output_json)
         target = destination(settings)
-        expiry = output.get("expires_at")
-        valid = (target and target[2] == row.destination_hash
-                 and decision.validator_status == "APPROVED" and decision.final_action in {"BUY", "SELL"}
-                 and not decision.model.startswith(("mock", "deterministic"))
-                 and setup.diagnostics.get("test_mode") is not True
-                 and 0 <= setup_timing(setup, now)["age_minutes"] <= settings.max_setup_age_minutes
-                 and (not expiry or utc(datetime.fromisoformat(expiry.replace("Z", "+00:00"))) > now)
-                 and settings.news_provider == "manual"
-                 and calendar_context(db, setup.root_symbol.value, now, settings)["status"] == "CLEAR")
-        if not valid:
-            row.status, row.last_error, row.lease_until = "SUPPRESSED", "Safety checks no longer pass", None
+        try:
+            source = db.query(SetupAlertRecord).filter_by(setup_id=decision.setup_id).one_or_none() if decision else None
+            if source is None:
+                reason = "Stored decision or setup missing"
+            else:
+                setup = SetupAlert.model_validate_json(source.payload_json)
+                output = LLMTradeDecision.model_validate_json(decision.raw_output_json)
+                reason = suppression_reason(db, row, decision, setup, output, target, settings, now)
+        except (ValueError, TypeError, OverflowError):
+            reason = "Stored payload or timing invalid"
+        if reason:
+            row.status, row.last_error, row.lease_until = "SUPPRESSED", reason, None
             db.commit()
             return True
         payload = {"decision_id": decision.id, "setup_id": decision.setup_id,
+                   "symbol": setup.symbol, "timeframe": setup.timeframe,
                    "action": decision.final_action, "confidence": decision.confidence,
                    "entry": decision.entry_preferred, "stop_loss": decision.stop_loss,
                    "take_profit": decision.take_profit_1, "risk_reward": decision.risk_reward,
                    "model": decision.model, "reason": decision.reason_summary,
-                   "entry_status": "PENDING_HUMAN_REVIEW", "created_at": decision.created_at.isoformat()}
+                   "entry_status": "PENDING_HUMAN_REVIEW", "created_at": decision.created_at.isoformat(),
+                   "confidence_meaning": "Setup quality, not win probability", "orders_placed": False}
         db.commit()
         try:
             status = sender(target, payload, settings)

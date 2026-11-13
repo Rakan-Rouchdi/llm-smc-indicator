@@ -132,3 +132,102 @@ def test_bad_notification_destination_does_not_lose_decision(notification_setup)
     assert process(payload, settings)["status"] == "processed"
     with SessionLocal() as db:
         assert db.query(NotificationRecord).count() == 0
+
+
+@pytest.mark.parametrize("provider", ["manual", "forexfactory", "showmytrades"])
+@pytest.mark.parametrize("state", ["clear", "blackout", "stale", "future", "expired_coverage", "wrong_provider", "missing"])
+def test_delivery_rechecks_each_verified_provider(notification_setup, provider, state):
+    from app.models import CalendarCoverageRecord, NewsEventRecord
+    from app.news import SOURCE_PREFIXES
+    payload, settings = notification_setup
+    process(payload, settings)
+    settings.news_provider = provider
+    settings.require_verified_news = True
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        coverage = db.get(CalendarCoverageRecord, 1)
+        coverage.source = SOURCE_PREFIXES.get(provider, "Manual test calendar") + " synthetic fixture"
+        if state == "blackout":
+            db.add(NewsEventRecord(event_id="test-news", title="Synthetic blackout", impact="HIGH",
+                                  event_time=now, symbols_json='["ES"]'))
+        elif state == "stale":
+            coverage.verified_at = now - timedelta(hours=2 if provider == "showmytrades" else 25)
+        elif state == "future":
+            coverage.verified_at = now + timedelta(minutes=5)
+        elif state == "expired_coverage":
+            coverage.coverage_end = now - timedelta(seconds=1)
+        elif state == "wrong_provider":
+            coverage.source = SOURCE_PREFIXES["forexfactory" if provider != "forexfactory" else "showmytrades"]
+        elif state == "missing":
+            db.delete(coverage)
+        db.commit()
+    sent = []
+    assert deliver_one(settings, lambda *args: sent.append(args) or 200)
+    assert len(sent) == (1 if state == "clear" else 0)
+    with SessionLocal() as db:
+        row = db.query(NotificationRecord).one()
+        assert row.status == ("SENT" if state == "clear" else "SUPPRESSED")
+        if state != "clear":
+            assert row.last_error == f"News safety gate: {'BLACKOUT' if state == 'blackout' else 'UNKNOWN'}"
+
+
+@pytest.mark.parametrize("cause", ["disabled", "mock_news", "corrupt_output", "invalid_close", "naive_expiry"])
+def test_delivery_fail_closed_without_ambiguous_retry(notification_setup, cause):
+    from app.models import LLMDecisionRecord, SetupAlertRecord
+    payload, settings = notification_setup
+    process(payload, settings)
+    with SessionLocal() as db:
+        if cause == "disabled":
+            settings.enable_notifications = False
+        elif cause == "mock_news":
+            settings.news_provider = "mock"
+        elif cause == "corrupt_output":
+            db.query(LLMDecisionRecord).one().raw_output_json = "not json"
+        elif cause == "naive_expiry":
+            row = db.query(LLMDecisionRecord).one()
+            output = json.loads(row.raw_output_json)
+            output["expires_at"] = "2099-01-01T12:00:00"
+            row.raw_output_json = json.dumps(output)
+        else:
+            row = db.query(SetupAlertRecord).one()
+            raw = json.loads(row.payload_json)
+            raw["diagnostics"]["bar_close_time"] = "bad-date-secret-must-not-appear"
+            row.payload_json = json.dumps(raw)
+        db.commit()
+    assert deliver_one(settings, lambda *_: pytest.fail("Unsafe notification"))
+    assert not deliver_one(settings, lambda *_: pytest.fail("Suppressed notification retried"))
+    with SessionLocal() as db:
+        row = db.query(NotificationRecord).one()
+        assert row.status == "SUPPRESSED"
+        assert "secret-must-not-appear" not in row.last_error
+
+
+@pytest.mark.parametrize("channel", ["webhook", "telegram"])
+def test_real_sender_serialization_with_mock_http_transport(notification_setup, monkeypatch, channel):
+    import httpx
+    from app.notifier import send_message
+    payload, settings = notification_setup
+    if channel == "telegram":
+        settings.notification_webhook_url = None
+        settings.telegram_bot_token = "synthetic-token"
+        settings.telegram_chat_id = "synthetic-chat"
+    process(payload, settings)
+    requests = []
+    def transport(request):
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True})
+    original = httpx.Client
+    def client(**kwargs):
+        assert kwargs["follow_redirects"] is False and kwargs["trust_env"] is False
+        return original(**kwargs, transport=httpx.MockTransport(transport))
+    monkeypatch.setattr("app.notifier.httpx.Client", client)
+    assert deliver_one(settings, send_message)
+    assert len(requests) == 1
+    body = json.loads(requests[0].content)
+    if channel == "telegram":
+        assert body["chat_id"] == "synthetic-chat"
+        assert "not a win probability" in body["text"] and "no order placed" in body["text"]
+        assert payload["symbol"] in body["text"]
+    else:
+        assert body["symbol"] == payload["symbol"] and body["orders_placed"] is False
+    assert requests[0].headers["Idempotency-Key"].startswith("smc-decision-")
