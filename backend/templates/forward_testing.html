@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Forward testing | SMC</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/forward_testing.js" defer></script>
+</head>
+<body>
+<main class="shell">
+  <header class="topbar">
+    <div><h1>Forward testing</h1><p>Paper observations | No orders | Accuracy not established</p></div>
+    <nav aria-label="Dashboard"><a class="button" href="/dashboard">Dashboard</a></nav>
+  </header>
+  <section class="operations">
+    <h2>Revision 19 cohort</h2>
+    <p>Started {{ ledger.cohort_start }} | {{ ledger.total_receipts }} receipts, including excluded tests and blocked candidates.</p>
+    <p>News freshness, blackout and deterministic approval gates remain in force. Source is unverified until matched against the TradingView alert log.</p>
+    <a href="/forward-testing?limit=100&amp;offset={{ ledger.offset }}">JSON records</a>
+  </section>
+  {% for row in ledger.rows %}
+  <article class="ledger-row">
+    <header class="topbar">
+      <div><h2><a href="/dashboard/setups/{{ row.id }}">{{ row.symbol }} / {{ row.timeframe }}</a></h2><p>{{ row.setup_id }}</p></div>
+      <strong>{{ row.action or row.status }}</strong>
+    </header>
+    <dl class="operations-grid">
+      <div><dt>Received (UTC)</dt><dd>{{ row.received_at }}</dd></div>
+      <div><dt>Cohort eligibility</dt><dd>{{ row.cohort_status }}</dd></div>
+      <div><dt>Validator / model</dt><dd>{{ row.validator or "Pending" }} / {{ row.model or "Pending" }}</dd></div>
+      <div><dt>Close to receipt</dt><dd>{{ (row.delivery.close_to_receipt_ms ~ " ms") if row.delivery.close_to_receipt_ms is not none else "Not measured" }}</dd></div>
+      <div><dt>Receipt to decision record</dt><dd>{{ (row.delivery.receipt_to_decision_record_ms ~ " ms") if row.delivery.receipt_to_decision_record_ms is not none else "Not measured" }}</dd></div>
+      <div><dt>Notification API status</dt><dd>{{ row.delivery.notification.status }}</dd></div>
+      <div><dt>Receipt to notification API acceptance</dt><dd>{{ (row.delivery.notification.receipt_to_api_acceptance_ms ~ " ms") if row.delivery.notification.receipt_to_api_acceptance_ms is not none else "Not measured" }}</dd></div>
+      <div><dt>Entry / SL / TP1 (unfilled)</dt><dd>{{ row.entry }} / {{ row.sl }} / {{ row.tp1 }}</dd></div>
+      <div><dt>Latest paper outcome</dt><dd>{{ row.review.outcome if row.review else "UNRECORDED" }}</dd></div>
+    </dl>
+    <p>{{ row.reason or "Processing has not produced a decision." }}</p>
+    {% if row.review %}
+    <p>Observed until {{ row.review.observed_until }} | Entry {{ row.review.entry_status }} | Source {{ "operator-confirmed" if row.review.source_verified else "unverified" }}</p>
+    <p>{{ row.review.notes }}</p>
+    {% endif %}
+    {% if row.cohort_status == "ELIGIBLE_PAPER_REVIEW" %}
+    <details>
+      <summary>{{ "Append a correction" if row.review else "Record paper outcome" }}</summary>
+      <form class="review-form" data-decision-id="{{ row.decision_id }}">
+        <div class="review-fields">
+          <label>Outcome<select name="outcome"><option>UNKNOWN</option><option>WIN</option><option>LOSS</option><option>EXPIRED</option></select></label>
+          <label>Entry touch<select name="entry_status"><option>UNKNOWN</option><option value="TOUCHED">Observed touch</option><option value="NOT_TOUCHED">No observed touch</option></select></label>
+          <label>Observed until (your local time)<input name="observed_until" type="datetime-local" required></label>
+        </div>
+        <label class="checkbox-label"><input name="source_verified" type="checkbox">Matched this setup to the TradingView alert log</label>
+        <label>Evidence and event order<textarea name="notes" minlength="20" maxlength="2000" rows="4" required></textarea></label>
+        <button class="button" type="submit">Save paper review</button>
+        <p role="status" aria-live="polite"></p>
+      </form>
+      <a href="/forward-testing/decisions/{{ row.decision_id }}/reviews">Review audit history</a>
+    </details>
+    {% endif %}
+  </article>
+  {% else %}
+  <section class="operations"><h2>Waiting for the first receipt</h2><p>No receipts since the cohort start. No performance result is available.</p></section>
+  {% endfor %}
+  <nav class="pagination" aria-label="Receipts">
+    {% if ledger.offset > 0 %}<a class="button" href="?offset={{ [0, ledger.offset-ledger.limit] | max }}">Newer receipts</a>{% endif %}
+    {% if ledger.offset+ledger.limit < ledger.total_receipts %}<a class="button" href="?offset={{ ledger.offset+ledger.limit }}">Older receipts</a>{% endif %}
+  </nav>
+  <footer class="operations">
+    <h2>Observation protocol</h2>
+    <p>WIN: entry touched after the decision, then TP1 before SL. LOSS: entry touched, then SL before TP1. EXPIRED: no entry touch before the decision expiry. UNKNOWN: missing data, unresolved sequence, or both levels touched without reliable ordering.</p>
+    <p>Record the chart source, timezone, observation window and event timestamps in evidence. Review through decision expiry for entry eligibility and up to 24 hours after the decision for an entered paper setup; unresolved results stay UNKNOWN. Corrections append to the audit history.</p>
+    <p>API acceptance is not proof of phone receipt. Paper observations do not prove fills, costs or profitability. No retrospective entries before the decision, and no trades are placed.</p>
+  </footer>
+</main>
+</body>
+</html>

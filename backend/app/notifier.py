@@ -8,7 +8,7 @@ from sqlalchemy import select, update
 
 from app.config import AUTO_NEWS_PROVIDERS
 from app.database import SessionLocal
-from app.models import LLMDecisionRecord, NotificationRecord, SetupAlertRecord
+from app.models import LLMDecisionRecord, NotificationRecord, NotificationAttemptRecord, SetupAlertRecord
 from app.news import calendar_context, utc
 from app.schemas import LLMTradeDecision, SetupAlert
 from app.timing import setup_timing
@@ -136,6 +136,7 @@ def deliver_one(settings, sender=send_message):
                    "entry_status": "PENDING_HUMAN_REVIEW", "created_at": decision.created_at.isoformat(),
                    "confidence_meaning": "Setup quality, not win probability", "orders_placed": False}
         db.commit()
+        started_at = datetime.now(timezone.utc)
         try:
             status = sender(target, payload, settings)
             row.status = "SENT" if 200 <= status < 300 else (
@@ -145,5 +146,7 @@ def deliver_one(settings, sender=send_message):
         except Exception as exc:
             row.status, row.last_error = "UNKNOWN", type(exc).__name__
         row.lease_until = None
+        db.add(NotificationAttemptRecord(notification_id=row.id, started_at=started_at,
+            finished_at=datetime.now(timezone.utc), status=row.status))
         db.commit()
         return True

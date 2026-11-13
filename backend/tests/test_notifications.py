@@ -99,6 +99,9 @@ def test_unknown_send_is_not_blindly_retried(notification_setup):
     with SessionLocal() as db:
         row = db.query(NotificationRecord).one()
         assert row.status == "UNKNOWN" and row.last_error == "TimeoutError"
+        from app.models import NotificationAttemptRecord
+        attempt = db.query(NotificationAttemptRecord).one()
+        assert attempt.status == "UNKNOWN" and attempt.finished_at >= attempt.started_at
 
 
 def test_retry_limit(notification_setup):
@@ -112,6 +115,9 @@ def test_retry_limit(notification_setup):
     assert not deliver_one(settings, lambda *_: pytest.fail("Retries exhausted"))
     with SessionLocal() as db:
         assert db.query(NotificationRecord).one().status == "FAILED"
+        from app.models import NotificationAttemptRecord
+        assert db.query(NotificationAttemptRecord).count() == 3
+        assert db.query(NotificationAttemptRecord).filter_by(status="SENT").count() == 0
 
 
 def test_crashed_send_lease_becomes_unknown(notification_setup):

@@ -16,6 +16,7 @@ from starlette.concurrency import run_in_threadpool
 from app.config import AUTO_NEWS_PROVIDERS, Settings, get_settings
 from app.auth import require_dashboard_auth
 from app.dashboard import router as dashboard_router
+from app.forward_testing import router as forward_testing_router
 from app.delivery import delivery_report, evaluation_summary
 from app.database import get_db, init_db
 from app.models import DecisionJobRecord, LLMDecisionRecord, SetupAlertRecord, AlertObservationRecord, NotificationRecord, NotificationProbeRecord
@@ -64,6 +65,7 @@ app = FastAPI(title="SMC LLM Trade Setup Validator", version="0.5.0", lifespan=l
 app.add_middleware(ReceiptTimingMiddleware)
 app.mount("/static", StaticFiles(directory=str(BACKEND_ROOT / "static")), name="static")
 app.include_router(dashboard_router)
+app.include_router(forward_testing_router)
 
 
 @app.get("/health")

@@ -38,6 +38,8 @@ def test_webhook_worker_automatic_news_and_final_notification(client, fresh_setu
     result = client.get("/setups/1").json()
     assert result["decisions"][0]["validator_status"] == "APPROVED"
     assert result["delivery"]["notification"]["status"] == "SENT"
+    assert result["delivery"]["notification"]["api_accepted_at"] is not None
+    assert result["delivery"]["notification"]["receipt_to_api_acceptance_ms"] >= 0
     assert result["delivery"]["receipt_to_processing_ms"] >= 0
     assert result["delivery"]["provider_ms"] >= 0
     assert result["delivery"]["receipt_to_decision_record_ms"] >= 0

@@ -256,6 +256,14 @@ It uses disposable SQLite, mock reasoning, no `.env`, no outbound notifications
 and no TradingView alert. Stop with Ctrl-C. Never tunnel this unauthenticated
 loopback-only preview. See [closed-market testing](docs/closed_market_testing.md).
 
+## Forward Testing
+
+Open **Forward testing** from the authenticated dashboard to review incoming
+receipts, exclusions, delivery timings and append-only paper outcomes. No orders
+are submitted. News freshness and blackout gates remain mandatory.
+See [the forward-testing protocol](docs/forward_testing.md) and
+[mobile verification](docs/mobile_forward_validation_2026_11_13.md).
+
 ## Validation Docs
 
 - Phase 2B TradingView validation: `docs/phase2b_validation.md`

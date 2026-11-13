@@ -10,6 +10,8 @@
     <div><dt>Model / preflight duration</dt><dd>{{ (delivery.provider_ms ~ " ms") if delivery.provider_ms is not none else "Not measured" }}</dd></div>
     <div><dt>Receipt to decision record</dt><dd>{{ (delivery.receipt_to_decision_record_ms ~ " ms") if delivery.receipt_to_decision_record_ms is not none else "Not measured" }}</dd></div>
     <div><dt>Final notification</dt><dd>{{ delivery.notification.status }} | {{ delivery.notification.attempts }} attempts</dd></div>
+    <div><dt>Notification API accepted (UTC)</dt><dd>{{ delivery.notification.api_accepted_at or "Not measured" }}</dd></div>
+    <div><dt>Receipt to notification API acceptance</dt><dd>{{ (delivery.notification.receipt_to_api_acceptance_ms ~ " ms") if delivery.notification.receipt_to_api_acceptance_ms is not none else "Not measured" }}</dd></div>
     <div><dt>Timing validity</dt><dd>{{ delivery.timing_status }}</dd></div>
   </dl>
   {% if delivery.notification.reason %}<p class="warning">Notification: {{ delivery.notification.reason }}</p>{% endif %}

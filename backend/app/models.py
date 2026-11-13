@@ -173,3 +173,24 @@ class NotificationProbeRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     status: Mapped[str] = mapped_column(String(30), default="UNKNOWN")
     last_error: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+
+class NotificationAttemptRecord(Base):
+    __tablename__ = "notification_attempts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    notification_id: Mapped[int] = mapped_column(Integer, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(30))
+
+
+class ForwardReviewRecord(Base):
+    __tablename__ = "forward_reviews"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    decision_id: Mapped[int] = mapped_column(Integer, index=True)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    observed_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    outcome: Mapped[str] = mapped_column(String(30))
+    entry_status: Mapped[str] = mapped_column(String(30))
+    source_verified: Mapped[int] = mapped_column(Integer)
+    notes: Mapped[str] = mapped_column(Text)

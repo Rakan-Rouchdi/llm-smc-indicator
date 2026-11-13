@@ -5,7 +5,7 @@ import math
 from collections import Counter
 from datetime import datetime, timezone
 
-from app.models import LLMDecisionRecord, NotificationRecord, OutcomeRecord, SetupAlertRecord
+from app.models import ForwardReviewRecord, LLMDecisionRecord, NotificationRecord, NotificationAttemptRecord, OutcomeRecord, SetupAlertRecord
 from app.news import utc
 from app.schemas import SetupAlert
 from app.timing import setup_timing
@@ -37,7 +37,8 @@ def delivery_report(db, setup, decision=None, now=None):
         "receipt_to_processing_ms": None, "provider_ms": None,
         "processing_ms_before_commit": None, "receipt_to_decision_record_ms": None,
         "decision_recorded_at": None, "timing_status": "UNKNOWN",
-        "notification": {"status": "NOT_ENQUEUED", "attempts": 0, "reason": None},
+        "notification": {"status": "NOT_ENQUEUED", "attempts": 0, "reason": None,
+                         "api_accepted_at": None, "receipt_to_api_acceptance_ms": None},
     }
     try:
         timing = setup_timing(SetupAlert.model_validate(payload), now)
@@ -58,7 +59,12 @@ def delivery_report(db, setup, decision=None, now=None):
             (utc(decision.created_at) - utc(setup.received_at)).total_seconds() * 1000)
         row = db.query(NotificationRecord).filter_by(decision_id=decision.id).first()
         if row:
-            report["notification"] = {"status": row.status, "attempts": row.attempts, "reason": row.last_error}
+            report["notification"].update(status=row.status, attempts=row.attempts, reason=row.last_error)
+            attempt = db.query(NotificationAttemptRecord).filter_by(notification_id=row.id, status="SENT").order_by(
+                NotificationAttemptRecord.finished_at, NotificationAttemptRecord.id).first()
+            if row.status == "SENT" and attempt:
+                report["notification"].update(api_accepted_at=utc(attempt.finished_at).isoformat(),
+                    receipt_to_api_acceptance_ms=_milliseconds((utc(attempt.finished_at)-utc(setup.received_at)).total_seconds()*1000))
     return report
 
 
@@ -72,6 +78,7 @@ def evaluation_summary(db, limit=500):
     ids = [row.setup_id for row in setups]
     decisions = {}
     outcomes = {}
+    reviews = {}
     if ids:
         for row in db.query(LLMDecisionRecord).filter(LLMDecisionRecord.setup_id.in_(ids)).order_by(
                 LLMDecisionRecord.created_at.desc(), LLMDecisionRecord.id.desc()):
@@ -79,6 +86,11 @@ def evaluation_summary(db, limit=500):
         for row in db.query(OutcomeRecord).filter(OutcomeRecord.setup_id.in_(ids)).order_by(
                 OutcomeRecord.recorded_at.desc(), OutcomeRecord.id.desc()):
             outcomes.setdefault(row.setup_id, row)
+        decision_ids = [row.id for row in decisions.values()]
+        if decision_ids:
+            for row in db.query(ForwardReviewRecord).filter(ForwardReviewRecord.decision_id.in_(decision_ids)).order_by(
+                    ForwardReviewRecord.recorded_at.desc(), ForwardReviewRecord.id.desc()):
+                reviews.setdefault(row.decision_id, row)
     excluded, counts, eligible = Counter(), Counter(), 0
     for setup in setups:
         payload = _object(setup.payload_json)
@@ -96,7 +108,7 @@ def evaluation_summary(db, limit=500):
             excluded["non_live_provider"] += 1
         else:
             eligible += 1
-            outcome = outcomes.get(setup.setup_id)
+            outcome = reviews.get(decision.id) or outcomes.get(setup.setup_id)
             counts[outcome.outcome if outcome else "UNRECORDED"] += 1
     return {"scope": f"Newest {limit} received setups; latest decision and outcome per setup",
             "reviewed_setups": len(setups), "eligible_candidates": eligible,
