@@ -28,8 +28,9 @@ for Telegram. Before enabling delivery, explicitly approve the recipient and
 the category of recurring messages: final backend-approved BUY/SELL candidates
 with symbol, timeframe, setup quality, entry, SL, TP, RR and reason. Set
 `ENABLE_NOTIFICATIONS=true` only after that approval and deploy/restart.
-The initial November 13 implementation left delivery disabled. See the private
-Telegram activation report for the separately approved connection and test.
+The initial November 13 implementation left delivery disabled. See the
+[private Telegram activation report](private_telegram_activation_2026_11_13.md)
+for the separately approved connection and test.
 
 ## Hosted Diagnostic Test
 
