@@ -1,4 +1,6 @@
 import json
+import hashlib
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -124,3 +126,12 @@ def test_elapsed_expiry_without_touch_can_be_recorded(client, reviewable):
         db.commit()
     assert client.post(f"/forward-testing/decisions/{reviewable}/reviews",
         json=review_body(outcome="EXPIRED", entry_status="NOT_TOUCHED")).status_code == 200
+
+
+def test_dashboard_assets_use_content_versions(client, reviewable):
+    static = Path(__file__).resolve().parents[1] / "static"
+    css_hash = hashlib.sha256((static / "app.css").read_bytes()).hexdigest()[:12]
+    js_hash = hashlib.sha256((static / "forward_testing.js").read_bytes()).hexdigest()[:12]
+    for route in ("/dashboard", "/dashboard/setups/1", "/dashboard/forward-testing"):
+        assert f"/static/app.css?v={css_hash}" in client.get(route).text
+    assert f"/static/forward_testing.js?v={js_hash}" in client.get("/dashboard/forward-testing").text
