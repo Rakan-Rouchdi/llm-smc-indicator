@@ -107,9 +107,14 @@ def test_transport_rejects_redirects_failures_and_malformed_chat(monkeypatch, st
     assert send_telegram_probe(settings, str(uuid4()))[0] == "FAILED"
 
 
-def test_telegram_tokens_are_redacted_from_http_logs(caplog):
+@pytest.mark.parametrize("logger,message,secret", [
+    ("httpx", "https://api.telegram.org/botsynthetic-token/sendMessage", "synthetic-token"),
+    ("httpcore.http11", "/bot123456:abcdefghijklmnopqrstuvwx/sendMessage", "123456:abcdefghijklmnopqrstuvwx"),
+    ("httpcore.http2", "token=123456:abcdefghijklmnopqrstuvwx", "123456:abcdefghijklmnopqrstuvwx"),
+])
+def test_telegram_tokens_are_redacted_from_http_logs(caplog, logger, message, secret):
     from app.logging_config import protect_access_logs
     protect_access_logs()
-    with caplog.at_level(logging.INFO, logger="httpx"):
-        logging.getLogger("httpx").info("Request %s", "https://api.telegram.org/botsynthetic-token/sendMessage")
-    assert "synthetic-token" not in caplog.text and "[REDACTED]" in caplog.text
+    with caplog.at_level(logging.INFO, logger=logger):
+        logging.getLogger(logger).info("Request %s", message)
+    assert secret not in caplog.text and "[REDACTED]" in caplog.text
