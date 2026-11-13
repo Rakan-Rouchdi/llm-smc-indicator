@@ -29,12 +29,23 @@ deploying. They include manual calendar ingestion, alert-expiry observations,
 authenticated hosted checks, notification setup, and the exact proposed alert
 replacement. The updated chart does not update an existing alert snapshot.
 
-`NEWS_PROVIDER=manual` and `REQUIRE_VERIFIED_NEWS=true` are the live configuration.
+`NEWS_PROVIDER=showmytrades` and `REQUIRE_VERIFIED_NEWS=true` are the live configuration.
 For isolated mock exercises only, use `NEWS_PROVIDER=mock` and explicitly set
 `REQUIRE_VERIFIED_NEWS=false`. Keep `ENABLE_NOTIFICATIONS=false` during tests.
 OpenAI failures are recorded with fallback provenance and held as `NO_TRADE`.
 No mock/fallback, delivery-test, rejected, or expired decision is pushed as a
 live final notification.
+
+Final-notification delivery supports the same verified manual and automatic
+calendar providers as validation, and checks freshness again immediately before
+sending. See [final notifications](docs/final_notifications.md) for private
+Telegram setup. Notifications remain disabled until a recipient is approved.
+
+The dashboard and `/setups/{id}` expose measured delivery stages, with missing
+measurements explicitly unknown. `/evaluation` separates current-revision,
+live-approved candidates from tests, legacy decisions and fallbacks. Manual
+outcomes are not proof of fills or profitability. See the
+[November 13 verification report](docs/notification_delivery_completion_2026_11_13.md).
 
 ## Webhook Reliability
 
@@ -75,6 +86,19 @@ From the project root, with the backend running:
 scripts/send_sample_webhook.sh
 ```
 
+For a delivery-only probe that cannot call the paid model or approve a trade:
+
+```bash
+backend/.venv/bin/python backend/scripts/send_sample_webhook.py \
+  --payload examples/pine_alert_payload_example.json --blocked-probe
+```
+
+Load `WEBHOOK_SECRET` privately in the environment. For hosted testing, also set
+`MVP_WEBHOOK_URL` to the HTTPS endpoint without a secret in the URL. The helper
+uses the secret header, refuses redirects, and reports acknowledgement timing
+without printing the endpoint or secret. This is an HTTP probe, not proof that
+TradingView fired. It deliberately creates a DELIVERY TEST / NO_TRADE record.
+
 Equivalent curl:
 
 ```bash
@@ -95,6 +119,7 @@ POST /webhooks/tradingview
 - `GET /health`
 - `GET /status` (authenticated operations, alert observations, latency, queue)
 - `GET /notifications` (authenticated notification delivery status)
+- `GET /evaluation` (authenticated bounded forward-cohort counts, not win rate)
 - `GET /context/news-calendar` (authenticated calendar coverage)
 - `PUT /context/news-calendar` (authenticated complete verified snapshot)
 - `PUT /monitoring/alert` (authenticated observation only, not alert creation)

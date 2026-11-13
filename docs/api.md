@@ -1,6 +1,6 @@
 # API Notes
 
-The backend stores alert receipts immediately, then processes them using the configured LLM provider. News and Telegram context remain mocked.
+The backend stores alert receipts immediately, then processes them using the configured LLM provider. News supports verified manual and automatic calendars; Telegram sentiment context remains mocked. Final outgoing Telegram notifications are a separate opt-in feature.
 
 ## Health
 
@@ -57,13 +57,37 @@ All setup, decision, outcome and `/status` routes require the same Basic Auth as
 GET /setups/{id_or_setup_id}
 ```
 
-Returns one setup plus all stored decisions for that setup.
+Returns one setup plus all stored decisions, processing job and `delivery`
+evidence for that setup. Evidence includes candle-close-to-receipt,
+receipt-to-processing, provider/preflight duration, receipt-to-decision-record,
+feed status, detector revision and final notification state. Missing timings
+are `null`, not zero. Negative close-to-receipt values are flagged as
+`CLOCK_OR_PAYLOAD_ERROR`. Decision timestamps precede commit; these values do
+not measure the public HTTP acknowledgement or delivery to a phone.
 
 ## Processing Status
 
 `GET /status` checks database connectivity and reports worker liveness and job counts. `/health` is only process liveness; it does not prove webhook delivery or OpenAI availability.
 
-Pine v13 emits the bar opening time. Freshness is measured from the estimated close for supported minute resolutions 5, 15, 60 and 240. An optional `diagnostics.bar_close_time` gives an exact close (including shortened session bars). Legacy shortened bars whose calculated close is still in the future are conservatively rejected rather than treated as fresh. Pine trading rules and the existing alert snapshot are unchanged.
+Pine emits the bar opening time and revision 19 includes exact
+`diagnostics.bar_close_time` (including shortened session bars). Legacy payloads
+without the close use estimated minute-resolution closes; future calculated
+closes are conservatively rejected. Exact metadata does not remove delayed
+market feeds or pivot/confirmed-bar detection latency.
+
+## Delivery And Evaluation
+
+`GET /notifications` reports outbox states. `SENT` means the destination returned
+success, not that the user read a message. `UNKNOWN` requires reconciliation,
+not an automatic retry. All notification and evaluation routes require
+dashboard authentication in production.
+
+`GET /evaluation` reviews the newest 500 setups, using only the newest decision
+and outcome per setup. The eligible cohort requires `strict_v1`,
+`timing_sessions_v2`, an approved BUY/SELL and an OpenAI-requested non-fallback
+decision. Delivery tests, legacy revisions, pending/failed, rejected and
+non-live decisions have separate exclusion counts. Manual outcome counts are
+returned with `accuracy_status=NOT_ESTABLISHED`; no win rate is inferred.
 
 ## Latest Decision
 

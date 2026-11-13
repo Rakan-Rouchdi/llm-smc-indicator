@@ -99,7 +99,7 @@
                 <div><dt>Decided (UTC)</dt><dd>{{ latest_decision.created_at }}</dd></div>
                 <div><dt>LLM Action</dt><dd>{{ llm.action }}</dd></div>
                 <div><dt>Final Action</dt><dd>{{ latest_decision.final_action }}</dd></div>
-                <div><dt>Confidence</dt><dd>{{ latest_decision.confidence }}</dd></div>
+                <div><dt>Setup quality</dt><dd>{{ latest_decision.confidence }}/100, not a win probability</dd></div>
                 <div><dt>Entry (unfilled)</dt><dd>{{ latest_decision.entry_preferred }}</dd></div>
                 <div><dt>Stop Loss</dt><dd>{{ latest_decision.stop_loss }}</dd></div>
                 <div><dt>TP1</dt><dd>{{ latest_decision.take_profit_1 }}</dd></div>
@@ -113,6 +113,8 @@
           </article>
         </section>
 
+        {% include "_delivery.html" %}
+
         <section class="two-column">
           <article class="panel">
             <h2>Recorded News Context</h2>
@@ -122,7 +124,7 @@
                 <div><dt>Blackout</dt><dd>{{ news_context.blackout_active }}</dd></div>
                 <div><dt>Bias</dt><dd>{{ news_context.market_bias }}</dd></div>
                 <div><dt>Event</dt><dd>{{ news_context.high_impact_event_name or "None" }}</dd></div>
-                <div><dt>Minutes To Event</dt><dd>{{ news_context.minutes_to_event if news_context.minutes_to_event is not none else "None" }}</dd></div>
+                <div><dt>Minutes To Event</dt><dd>{{ news_context.get("minutes_to_event") if news_context.get("minutes_to_event") is not none else "None" }}</dd></div>
               </dl>
               <p class="reason">{{ news_context.headline_summary }}</p>
             {% else %}
@@ -134,10 +136,10 @@
             <h2>Mock Telegram Context</h2>
             {% if telegram_context %}
               <dl class="kv">
-                <div><dt>Bullish</dt><dd>{{ telegram_context.bullish_count }}</dd></div>
-                <div><dt>Bearish</dt><dd>{{ telegram_context.bearish_count }}</dd></div>
-                <div><dt>Neutral</dt><dd>{{ telegram_context.neutral_count }}</dd></div>
-                <div><dt>Sources</dt><dd>{{ telegram_context.source_count }}</dd></div>
+                <div><dt>Bullish</dt><dd>{{ telegram_context.get("bullish_count", "Not recorded") }}</dd></div>
+                <div><dt>Bearish</dt><dd>{{ telegram_context.get("bearish_count", "Not recorded") }}</dd></div>
+                <div><dt>Neutral</dt><dd>{{ telegram_context.get("neutral_count", "Not recorded") }}</dd></div>
+                <div><dt>Sources</dt><dd>{{ telegram_context.get("source_count", "Not recorded") }}</dd></div>
               </dl>
               <p class="reason">{{ telegram_context.summary }}</p>
             {% else %}
@@ -192,6 +194,19 @@
           <p class="empty">No webhook payloads have been received.</p>
         </section>
       {% endif %}
+
+      <section class="operations" aria-labelledby="evaluation-title">
+        <h2 id="evaluation-title">Forward evaluation</h2>
+        <dl class="operations-grid">
+          <div><dt>Current-revision, live-approved candidates</dt><dd>{{ evaluation.eligible_candidates }}</dd></div>
+          <div><dt>Manual WIN / LOSS</dt><dd>{{ evaluation.manual_outcomes.get("WIN", 0) }} / {{ evaluation.manual_outcomes.get("LOSS", 0) }}</dd></div>
+          <div><dt>Unrecorded outcomes</dt><dd>{{ evaluation.manual_outcomes.get("UNRECORDED", 0) }}</dd></div>
+          <div><dt>Manual EXPIRED / UNKNOWN</dt><dd>{{ evaluation.manual_outcomes.get("EXPIRED", 0) }} / {{ evaluation.manual_outcomes.get("UNKNOWN", 0) }}</dd></div>
+          <div><dt>Delivery tests excluded</dt><dd>{{ evaluation.excluded.get("delivery_test", 0) }}</dd></div>
+          <div><dt>Predictive accuracy</dt><dd>NOT ESTABLISHED</dd></div>
+        </dl>
+        <p>{{ evaluation.scope }}. {{ evaluation.limitations }}</p>
+      </section>
     </main>
   </body>
 </html>
