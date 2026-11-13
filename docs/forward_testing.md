@@ -5,6 +5,10 @@ of profitability. Keep `REQUIRE_VERIFIED_NEWS=true`, automatic calendar refresh,
 deterministic validation and fallback suppression enabled. Do not loosen the
 score or change the alert to manufacture activity.
 
+Automatic OHLC paper tracking is available through the separately approved
+price feed. See `automatic_paper_outcomes.md`. Automatic observations and manual
+annotations are displayed separately; uncertain automatic cases remain UNKNOWN.
+
 ## Scope
 
 - Fixed cohort start: November 13, 2026 at 17:10:12 UTC, creation of the approved

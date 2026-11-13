@@ -263,6 +263,9 @@ receipts, exclusions, delivery timings and append-only paper outcomes. No orders
 are submitted. News freshness and blackout gates remain mandatory.
 See [the forward-testing protocol](docs/forward_testing.md) and
 [mobile verification](docs/mobile_forward_validation_2026_11_13.md).
+Optional [automatic paper outcomes](docs/automatic_paper_outcomes.md) use a
+separately approved read-only TradingView price feed. Missing or ambiguous price
+evidence remains UNKNOWN. No trades, fills or realized profits are inferred.
 
 ## Validation Docs
 
