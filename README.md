@@ -4,6 +4,23 @@ Local MVP for an LLM-powered Smart Money Concepts TradingView workflow.
 
 The MVP is decision support only. It does not place trades, connect to brokers, use replay trading, or create TradingView alerts automatically.
 
+## Private Tester Handbook
+
+[Read the PDF manual](output/pdf/SMC_LLM_Private_Tester_Manual.pdf) before handing
+the indicator to a friend. It covers chart setup, the panel, dependencies,
+dashboard decisions, news gates, Telegram, automatic paper outcomes, safe local
+previews and troubleshooting. It explicitly separates the usable private-testing
+MVP from unfinished PRD scope and commercial-release requirements.
+
+Do not share the owner's operator credentials as a read-only tester login:
+separate tester roles are not implemented. The manual contains no credentials
+or private service URL. Its status evidence is dated November 13, 2026.
+
+Regenerate with `python scripts/build_tester_manual.py` in a documentation
+environment with `reportlab` installed. This is a documentation-only dependency;
+it is not required by the backend. Render and visually review the resulting PDF
+after edits, and verify its 16-page pagination and bookmarks.
+
 ## Current Scope
 
 - Pine indicator implemented and validated through TradingView MCP for ES/NQ on 5m, 15m, 1h, and 4h.
