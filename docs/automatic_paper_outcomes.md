@@ -35,7 +35,9 @@ does not change the server-side alert snapshot. TradingView's documentation:
 The user delegated the free-feed approach and approved the exact proposed
 deployment/activation configuration on November 13. Actual activation and live
 receipt proof must be recorded in the PR/deployment close-out, not inferred from
-the existence of this document or a successful static compile.
+the existence of this document or a successful static compile. See
+[activation evidence](automatic_outcome_activation.md) for the deployed alert
+IDs, first successful real delivery and remaining validation limits.
 
 ## Backend Configuration
 
