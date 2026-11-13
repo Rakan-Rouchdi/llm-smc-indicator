@@ -82,6 +82,15 @@ success, not that the user read a message. `UNKNOWN` requires reconciliation,
 not an automatic retry. All notification and evaluation routes require
 dashboard authentication in production.
 
+`POST /notifications/test` accepts a UUID `test_id` and sends only a fixed
+private-Telegram connectivity diagnostic. No arbitrary recipient or text is
+accepted. Dashboard credentials and the verified-news policy must be configured;
+the production notification switch can remain off during setup. Results are
+persisted separately from setups and decisions, with idempotency and one new
+attempt per UTC minute. `GET /notifications/tests/{test_id}` retrieves the
+record. This is not a market approval, and stale/blackout trade gates are not
+bypassed. See `final_notifications.md` for the operator workflow.
+
 `GET /evaluation` reviews the newest 500 setups, using only the newest decision
 and outcome per setup. The eligible cohort requires `strict_v1`,
 `timing_sessions_v2`, an approved BUY/SELL and an OpenAI-requested non-fallback

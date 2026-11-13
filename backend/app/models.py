@@ -164,3 +164,12 @@ class NotificationRecord(Base):
     available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+
+class NotificationProbeRecord(Base):
+    __tablename__ = "notification_probes"
+    test_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    minute_bucket: Mapped[int] = mapped_column(Integer, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    status: Mapped[str] = mapped_column(String(30), default="UNKNOWN")
+    last_error: Mapped[str | None] = mapped_column(String(100), nullable=True)

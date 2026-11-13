@@ -28,7 +28,39 @@ for Telegram. Before enabling delivery, explicitly approve the recipient and
 the category of recurring messages: final backend-approved BUY/SELL candidates
 with symbol, timeframe, setup quality, entry, SL, TP, RR and reason. Set
 `ENABLE_NOTIFICATIONS=true` only after that approval and deploy/restart.
-No channel or recipient was enabled during the November 13 implementation.
+The initial November 13 implementation left delivery disabled. See the private
+Telegram activation report for the separately approved connection and test.
+
+## Hosted Diagnostic Test
+
+After privately configuring the bot token and private chat ID, keep
+`ENABLE_NOTIFICATIONS=false` until a diagnostic message is verified. The
+authenticated `POST /notifications/test` accepts only:
+
+```json
+{"test_id": "<a newly generated UUID>"}
+```
+
+Use the dashboard-authenticated `/docs` page to execute it. It sends a fixed
+`SMC NOTIFICATION DELIVERY TEST` message to the configured private Telegram
+chat, not a BUY/SELL or fabricated approval. It never calls OpenAI, creates a
+setup/decision, or changes calendar coverage. Verified-news blocking must stay
+configured, even for this transport-only diagnostic. Current stale/blackout
+coverage still blocks trade candidates, but need not block an informational
+connectivity check.
+
+The result is persisted separately in `notification_probes` and available at
+`GET /notifications/tests/{test_id}`. Reusing a test ID never resends; there is
+also a database-enforced limit of one new test per UTC minute. `UNKNOWN` means
+an ambiguous attempt, including a crash or timeout, and must be reconciled
+before attempting another test. `SENT` means Telegram accepted the message;
+verify the message in the actual private chat as well.
+
+No arbitrary message text, chat ID, token or destination is accepted by this
+endpoint. Dashboard credentials are mandatory even in local development.
+The API refuses groups/channels, alternate notification webhooks, missing
+credentials and disabled verified-news policy. Application HTTP logs redact
+Telegram bot tokens, which appear in Telegram API URL paths.
 
 ## Safety And Delivery Semantics
 

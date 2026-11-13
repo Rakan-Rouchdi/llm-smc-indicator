@@ -119,6 +119,8 @@ POST /webhooks/tradingview
 - `GET /health`
 - `GET /status` (authenticated operations, alert observations, latency, queue)
 - `GET /notifications` (authenticated notification delivery status)
+- `POST /notifications/test` (authenticated, private Telegram diagnostic only)
+- `GET /notifications/tests/{test_id}` (persisted transport-test result)
 - `GET /evaluation` (authenticated bounded forward-cohort counts, not win rate)
 - `GET /context/news-calendar` (authenticated calendar coverage)
 - `PUT /context/news-calendar` (authenticated complete verified snapshot)
