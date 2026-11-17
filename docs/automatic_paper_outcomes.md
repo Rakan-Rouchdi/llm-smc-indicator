@@ -5,14 +5,33 @@ approval, calls the LLM for price data, or sends extra trading notifications.
 News freshness and blackout gates remain mandatory. Automatic tracking refuses
 configuration with `REQUIRE_VERIFIED_NEWS=false`.
 
-## Price Source And Approved Configuration
+## One Indicator and Alert Migration
 
-The existing setup webhook contains a snapshot, not subsequent prices. A separate
-Pine indicator supplies completed one-minute OHLC bars in five-minute batches.
+The canonical `pine/smc_llm_candidate_detector.pine` now includes an **Outcome
+prices** stream alongside its default **SMC setups** stream. There is no longer
+a separate price-indicator source file. Two background alert snapshots of this
+same script keep price evidence separate from setup messages; only one custom
+indicator needs to be visible on the chart.
+
+**Live migration is pending explicit approval.** The existing November 13
+price alert still runs its saved legacy snapshot. See the
+[November 17 audit and exact proposed configuration](unified_indicator_audit_2026_11_17.md).
+Do not replace either alert simply because the source or chart was updated.
+
+For the proposed price snapshot, select **Alert stream = Outcome prices**,
+**Enable alert() JSON payloads = true**, **Enable test webhook alert = false**,
+and feed ID `nq-paper-v1` on a standard NQ 5m chart. Restore the visible chart to
+**SMC setups** afterward. The default stream sends no price batches. Price mode
+cannot send setup/test messages and rejects unsupported chart intervals.
+
+## Existing Approved Price Configuration
+
+The existing setup webhook contains a snapshot, not subsequent prices. The
+November 13 legacy alert supplies completed one-minute OHLC bars in five-minute batches.
 This uses the existing TradingView account, not a paid external data API. It
 adds hosting requests/storage; free-service quotas and uptime are not guaranteed.
 
-- Indicator: `pine/smc_paper_price_feed.pine` / SMC Paper Price Feed.
+- Legacy saved indicator: SMC Paper Price Feed revision 1 (source retained in Git history).
 - Alert name: SMC Paper Price Feed NQ.
 - Chart: CME_MINI_DL:NQ1!, standard candles, 5m.
 - Condition: SMC Paper Price Feed -> Any alert() function call.
@@ -26,7 +45,7 @@ adds hosting requests/storage; free-service quotas and uptime are not guaranteed
 - Existing SMC alert `6067103295` remains unchanged. Intended total: one SMC
   candidate alert plus one data-only price alert, not duplicate signal alerts.
 
-Pine defaults to OFF and requires a standard ES/NQ 5m chart. Changing a chart
+The legacy script defaulted to OFF and requires a standard ES/NQ 5m chart. Changing a chart
 does not change the server-side alert snapshot. TradingView's documentation:
 [alert snapshots](https://www.tradingview.com/pine-script-docs/faq/alerts/),
 [webhook delivery](https://www.tradingview.com/support/solutions/43000529348-how-to-configure-webhook-alerts/),

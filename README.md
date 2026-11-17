@@ -16,6 +16,12 @@ Do not share the owner's operator credentials as a read-only tester login:
 separate tester roles are not implemented. The manual contains no credentials
 or private service URL. Its status evidence is dated November 13, 2026.
 
+The [November 17 audit](docs/unified_indicator_audit_2026_11_17.md) supersedes the
+manual's separate-indicator wiring: setup detection and outcome-price collection
+now share one Pine source. Migrating the two background alert snapshots still
+requires approval. The live 4h signal alert and legacy price alert are unchanged;
+there are no eligible forward-test WIN/LOSS results yet.
+
 Regenerate with `python scripts/build_tester_manual.py` in a documentation
 environment with `reportlab` installed. This is a documentation-only dependency;
 it is not required by the backend. Render and visually review the resulting PDF
@@ -281,7 +287,8 @@ are submitted. News freshness and blackout gates remain mandatory.
 See [the forward-testing protocol](docs/forward_testing.md) and
 [mobile verification](docs/mobile_forward_validation_2026_11_13.md).
 Optional [automatic paper outcomes](docs/automatic_paper_outcomes.md) use a
-separately approved read-only TradingView price feed. Missing or ambiguous price
+separately approved read-only alert stream in the same indicator. Its migration
+from the legacy price script is prepared, not activated. Missing or ambiguous price
 evidence remains UNKNOWN. No trades, fills or realized profits are inferred.
 
 ## Validation Docs
