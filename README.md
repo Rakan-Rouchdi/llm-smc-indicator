@@ -14,13 +14,14 @@ MVP from unfinished PRD scope and commercial-release requirements.
 
 Do not share the owner's operator credentials as a read-only tester login:
 separate tester roles are not implemented. The manual contains no credentials
-or private service URL. Its status evidence is dated November 13, 2026.
+or private service URL. Its configuration snapshot is dated November 19, 2026.
 
-The [November 17 audit](docs/unified_indicator_audit_2026_11_17.md) supersedes the
-manual's separate-indicator wiring: setup detection and outcome-price collection
-now share one Pine source. Migrating the two background alert snapshots still
-requires approval. The live 4h signal alert and legacy price alert are unchanged;
-there are no eligible forward-test WIN/LOSS results yet.
+The [November 19 activation](docs/unified_nq5m_activation_2026_11_19.md) migrated
+both existing alert snapshots to unified Pine revision 24 on NQ 5m. One visible
+custom indicator serves two separate background jobs: candidates and outcome
+prices. There are no duplicate signal alerts or established forward-test
+WIN/LOSS results. The [November 17 audit](docs/unified_indicator_audit_2026_11_17.md)
+explains the preceding 4h signal scarcity and unchanged detection rules.
 
 Regenerate with `python scripts/build_tester_manual.py` in a documentation
 environment with `reportlab` installed. This is a documentation-only dependency;
@@ -287,9 +288,9 @@ are submitted. News freshness and blackout gates remain mandatory.
 See [the forward-testing protocol](docs/forward_testing.md) and
 [mobile verification](docs/mobile_forward_validation_2026_11_13.md).
 Optional [automatic paper outcomes](docs/automatic_paper_outcomes.md) use a
-separately approved read-only alert stream in the same indicator. Its migration
-from the legacy price script is prepared, not activated. Missing or ambiguous price
-evidence remains UNKNOWN. No trades, fills or realized profits are inferred.
+separately approved read-only alert stream in the same indicator, activated on
+November 19. Missing or ambiguous price evidence remains UNKNOWN. No trades,
+fills or realized profits are inferred.
 
 ## Validation Docs
 

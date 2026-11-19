@@ -13,12 +13,12 @@ a separate price-indicator source file. Two background alert snapshots of this
 same script keep price evidence separate from setup messages; only one custom
 indicator needs to be visible on the chart.
 
-**Live migration is pending explicit approval.** The existing November 13
-price alert still runs its saved legacy snapshot. See the
-[November 17 audit and exact proposed configuration](unified_indicator_audit_2026_11_17.md).
-Do not replace either alert simply because the source or chart was updated.
+**Live migration was approved and completed November 19.** Both existing jobs
+now use unified revision 24; IDs and history were retained without duplicates.
+See [activation evidence](unified_nq5m_activation_2026_11_19.md).
+Future source/chart changes still do not automatically update saved alerts.
 
-For the proposed price snapshot, select **Alert stream = Outcome prices**,
+For the price snapshot, select **Alert stream = Outcome prices**,
 **Enable alert() JSON payloads = true**, **Enable test webhook alert = false**,
 and feed ID `nq-paper-v1` on a standard NQ 5m chart. Restore the visible chart to
 **SMC setups** afterward. The default stream sends no price batches. Price mode
@@ -27,36 +27,33 @@ cannot send setup/test messages and rejects unsupported chart intervals.
 ## Existing Approved Price Configuration
 
 The existing setup webhook contains a snapshot, not subsequent prices. The
-November 13 legacy alert supplies completed one-minute OHLC bars in five-minute batches.
+unified price-mode alert supplies completed one-minute OHLC bars in five-minute batches.
 This uses the existing TradingView account, not a paid external data API. It
 adds hosting requests/storage; free-service quotas and uptime are not guaranteed.
 
-- Legacy saved indicator: SMC Paper Price Feed revision 1 (source retained in Git history).
-- Alert name: SMC Paper Price Feed NQ.
+- Saved indicator: SMC LLM Candidate Detector revision 24.
+- Alert name: SMC LLM Outcome Prices NQ; ID `6067783354` retained.
 - Chart: CME_MINI_DL:NQ1!, standard candles, 5m.
-- Condition: SMC Paper Price Feed -> Any alert() function call.
-- Enable paper price feed: true; feed ID: `nq-paper-v1`.
+- Condition: SMC LLM Candidate Detector -> Any alert() function call.
+- Alert stream: Outcome prices; JSON true; test false; feed ID: `nq-paper-v1`.
 - Script-generated message, once at a confirmed real-time 5m close.
 - Evidence: standard unadjusted extended-session 1m bars, underlying contract
   identifiers, last 20 bars replayed as a bounded repair buffer.
 - Webhook only, no app/email notifications:
   `https://<existing-backend>/webhooks/tradingview/prices?secret=<existing-secret>`.
 - Expiry: January 7, 2027 at 18:00 UTC.
-- Existing SMC alert `6067103295` remains unchanged. Intended total: one SMC
-  candidate alert plus one data-only price alert, not duplicate signal alerts.
+- SMC alert `6067103295` now uses revision 24, SMC setups mode, NQ 5m.
+  Total: one candidate alert plus one data-only price alert, not duplicates.
 
-The legacy script defaulted to OFF and requires a standard ES/NQ 5m chart. Changing a chart
+The price stream requires a standard ES/NQ 5m chart. Changing a chart
 does not change the server-side alert snapshot. TradingView's documentation:
 [alert snapshots](https://www.tradingview.com/pine-script-docs/faq/alerts/),
 [webhook delivery](https://www.tradingview.com/support/solutions/43000529348-how-to-configure-webhook-alerts/),
 [continuous-contract adjustments](https://www.tradingview.com/support/solutions/43000685266-how-can-i-enable-backadjustment-for-continuous-futures/).
 
-The user delegated the free-feed approach and approved the exact proposed
-deployment/activation configuration on November 13. Actual activation and live
-receipt proof must be recorded in the PR/deployment close-out, not inferred from
-the existence of this document or a successful static compile. See
-[activation evidence](automatic_outcome_activation.md) for the deployed alert
-IDs, first successful real delivery and remaining validation limits.
+The November 13 [original activation](automatic_outcome_activation.md) is retained
+as historical evidence. The November 19 report records the unified migration.
+Neither a successful compile nor an active alert alone proves webhook delivery.
 
 ## Backend Configuration
 
@@ -111,8 +108,8 @@ event; event timestamps, not receipt order, determine the paper sequence.
   runs separately from the HTTP acknowledgement and after queued decisions and
   notifications. Enabled workers also recover every five minutes after restart.
 - Bounded scope: newest 500 decisions created within 72 hours. This is not a
-  retroactive score of older setups; earlier results remain stored. The current
-  single NQ 4h alert fits comfortably within that bound.
+  retroactive score of older setups; earlier results remain stored. The NQ 5m
+  candidate alert must be monitored against that bound as activity grows.
 - `outcome_price_bars`: unique feed/symbol/minute, original price JSON plus first
   conflicting version, receipt/update times. No destructive retention job added.
 - `automatic_outcome_evaluations`: append-only per-decision evidence hashes,

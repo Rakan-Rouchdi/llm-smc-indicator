@@ -1,5 +1,9 @@
 # Unified Indicator and Live Testing Audit
 
+Historical audit. The proposed migration below was approved and completed on
+November 19; see [activation evidence](unified_nq5m_activation_2026_11_19.md).
+Statements about unchanged legacy alerts describe November 17, not current wiring.
+
 Checked November 17, 2026, approximately 17:20-17:36 UTC. The hosted service and
 price delivery are working, but the current forward-testing cohort has no
 eligible approved setups and therefore no measured WIN/LOSS results. The active

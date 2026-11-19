@@ -146,7 +146,7 @@ def page(kicker, title):
 page("Private beta / tester handbook", "SMC LLM Trade Setup Validator")
 story[-1] = p("SMC LLM<br/>Trade Setup Validator", "TitleManual")
 story += [p("How it works. What to watch. What not to assume.", "SubManual"),
-          p("Handbook 1.0 | 13 November 2026<br/>Backend package 0.3.0 | Policy strict_v1 | Detector timing_sessions_v2", "SmallManual"),
+          p("Handbook 1.1 | 19 November 2026<br/>Unified Pine revision 24 | Policy strict_v1 | Detector timing_sessions_v2", "SmallManual"),
           Spacer(1, 12),
           callout("Ready for controlled testing - not a finished commercial product",
                   "The core chart-to-backend workflow is implemented, deployed and tested. "
@@ -166,8 +166,8 @@ story += [p("How it works. What to watch. What not to assume.", "SubManual"),
           p("<b>The three distinctions that prevent most mistakes</b>", "SubManual"),
           p("A chart <b>CANDIDATE</b> is not a final approval. A backend <b>APPROVED</b> decision is not an order. "
             "A paper <b>WIN</b> is not realized profit."),
-          p("Evidence snapshot: 321 backend tests passed; real price-feed delivery and private Telegram transport "
-            "were verified on 13 November. This handbook does not certify future uptime or future market results.", "SmallManual"),
+          p("Evidence snapshot: 328 backend tests passed. Both live alert jobs now use the unified NQ 5m script. "
+            "Private Telegram transport was verified on 13 November. No natural approved result is established for the new window.", "SmallManual"),
           p("Share this PDF without credentials. The service address, passwords, API keys, webhook secret and "
             "private chat identifiers are deliberately omitted.", "SmallManual")]
 
@@ -187,7 +187,7 @@ story += [callout("Do not share the owner's operator login",
           p("Your first 10 minutes", "SubManual")]
 story += bullets([
     "Agree that this is observation-only testing. Choose chart-only, supervised or isolated mode before receiving access.",
-    "For comparison with the live cohort, open the exact delayed NQ continuous contract and a standard 4h candlestick chart. "
+    "For comparison with the current live window, open the exact delayed NQ continuous contract and a standard 5m candlestick chart. "
     "The current source is CME_MINI_DL:NQ1!; do not substitute a CFD, micro contract or a different data entitlement.",
     "Add the detector and keep its default rules. Use Compact panel, candidate price labels on, debug zones/markers off, test mode off.",
     "Read Gate, Candle and HTF. WAIT / No setup is a valid state. A historical label is not a current instruction.",
@@ -200,10 +200,10 @@ story += [p("Before handoff, the owner supplies the approved script version, acc
 
 page("02 / Architecture", "What the system actually does")
 story += [Pipeline(), p("A second, data-only path follows the prices", "SubManual"),
-          p("The separate SMC Paper Price Feed sends completed 1m NQ bars in 5m batches. The backend stores these bars "
+          p("The same indicator's Outcome prices alert stream sends completed 1m NQ bars in 5m batches. The backend stores these bars "
             "and compares eligible final decisions with later prices. This path does not call the LLM or produce trading signals."),
           table(["Component", "Current role / dependency"], [
-              ["TradingView + Pine v6", "Live chart detection and server-side alerts. Current candidate alert: NQ 4h. Separate price-feed alert: NQ 5m. "
+              ["TradingView + Pine v6", "One visible custom indicator. Two background jobs use its saved NQ 5m snapshots: candidates and outcome prices. "
                "A webhook-capable plan, enabled 2FA and available alert slots are needed to operate alerts [S1-S2]."],
               ["Render + Neon", "Hosted FastAPI worker/dashboard plus persistent PostgreSQL. Local development uses SQLite. "
                "Free hosting/database wake-up and quotas remain operational risks [S3-S4]."],
@@ -223,7 +223,7 @@ story += bullets([
     "Get the owner-approved file pine/smc_llm_candidate_detector.pine. In TradingView, open Pine Editor, create a new indicator, "
     "paste the complete source, save it with a distinct personal name, and Add to chart. Report any compiler error rather than patching rules ad hoc.",
     "Use standard time-based candles. Validated detector combinations are ES and NQ on 5m, 15m, 1h and 4h. "
-    "For the current live test, use NQ 4h. Charts validated elsewhere do not have active backend alerts automatically.",
+    "For the current live test, use NQ 5m. Charts validated elsewhere do not have active backend alerts automatically.",
     "Check the exact feed and delayed-data badge with the owner. ES pairs with NQ and NQ with ES. "
     "Leave Companion symbol override blank unless a coordinated feed change is explicitly agreed.",
     "In indicator settings, use Panel mode = Compact; Show diagnostic table = on; Show candidate price labels = on. "
@@ -298,7 +298,7 @@ story += [p("The rules are an explicit approximation of SMC concepts, not a clai
               ["Aligned displacement", "10", "Maximum / minimum", "100 / 75"],
           ], [.35, .15, .35, .15]),
           p("Valid risk geometry and at least 1.5 RR are also required. One candidate is emitted per tracked FVG. "
-            "Strict NQ 4h filtering can be quiet for days; low frequency alone proves neither quality nor failure.", "SmallManual"),
+            "Strict filtering can be quiet for days; a move to 5m does not guarantee activity, quality or profitability.", "SmallManual"),
           p("<b>Other terms:</b> HTF = higher timeframe; EMA = exponential moving average; ATR = average true range; "
             "RVOL = relative volume; tick = the instrument's minimum price increment. SMT here means paired-market non-confirmation.", "SmallManual")]
 
@@ -429,7 +429,8 @@ story += [p("The live NQ feed batches the latest 20 completed 1m bars at each 5m
           p("Conservative rules worth knowing", "SubManual")]
 story += bullets([
     "Only current-cohort, current-revision, approved live-provider BUY/SELL decisions qualify. Tests, rejected decisions and "
-    "mock/fallback records are excluded. The cohort began 13 November 2026 at 17:10:12 UTC.",
+    "mock/fallback records are excluded. The cohort began 13 November 2026 at 17:10:12 UTC. "
+    "Review the NQ 5m window from 19 November 16:23 UTC separately from the earlier 4h records.",
     "The exact setup-close minute and price must match the feed. Continuous same-contract data is required through the relevant path. "
     "Session breaks and outages may leave UNKNOWN rather than a guessed result.",
     "A minute's low/high must span the final preferred entry price, not just any part of its zone. Entry is considered only after "
@@ -480,7 +481,7 @@ story += [p("Weekly review", "SubManual"),
 
 page("12 / Troubleshooting", "Quiet is not the same as broken")
 story += [table(["Symptom", "Check first", "Safe response"], [
-              ["No candidate for days", "Gate reason, 100-bar count, confirmed bars, active alert and expiry", "Strict NQ 4h can be sparse. "
+              ["No candidate for days", "Gate reason, Funnel panel, confirmed bars, active alert and expiry", "Strict filtering can be sparse. "
                "Investigate evidence; do not lower thresholds just to get alerts."],
               ["No setup / score empty", "Active FVG lifecycle", "Expected without a directional active zone. It is not automatically a calculation freeze."],
               ["1m data incomplete", "Loaded intrabar history and gaps", "Wait/reload ordinary chart data or report it. Do not synthesize missing minutes."],
@@ -503,11 +504,11 @@ page("13 / Owner operations", "Two alerts, with different jobs")
 story += [p("Reference configuration only. Reading this manual is not permission to create, replace or duplicate live alerts. "
             "A friend should not attach new alerts to the owner's endpoint."),
           table(["Setting", "Candidate alert", "Data-only price alert"], [
-              ["Name", "SMC LLM Candidate Detector webhook", "SMC Paper Price Feed NQ"],
-              ["Symbol / interval", "CME_MINI_DL:NQ1! / 4h", "CME_MINI_DL:NQ1! / 5m"],
-              ["Indicator", "SMC LLM Candidate Detector", "SMC Paper Price Feed"],
+              ["Name", "SMC LLM Candidate Detector webhook", "SMC LLM Outcome Prices NQ"],
+              ["Symbol / interval", "CME_MINI_DL:NQ1! / 5m", "CME_MINI_DL:NQ1! / 5m"],
+              ["Indicator", "SMC LLM Candidate Detector r24", "Same indicator, r24"],
               ["Condition", "Any alert() function call", "Any alert() function call"],
-              ["Inputs", "JSON on; test off; score 75", "Feed on; ID nq-paper-v1"],
+              ["Inputs", "SMC setups; JSON on; test off; score 75", "Outcome prices; JSON on; test off; ID nq-paper-v1"],
               ["Message", "Script-generated JSON", "Script-generated JSON; last 20 completed 1m bars"],
               ["Webhook path", "/webhooks/tradingview", "/webhooks/tradingview/prices"],
               ["Notifications", "App + toast + webhook", "Webhook only"],
@@ -520,7 +521,7 @@ story += bullets([
     "Verify the actual editor/script identity, compiled source, inputs, symbol and interval. A prior MCP tab-routing issue targeted "
     "the wrong editor; it was restored. Do not assume a tab-switch response proves the write target.",
     "Inspect saved alert snapshots, expiry and destination privately. Keep one candidate alert plus one data-only feed. "
-    "The live candidate snapshot remains revision 19; the restored editor revision number is not a rule change.",
+    "Both snapshots use revision 24. Restore the visible chart to SMC setups / Compact after configuring the price job.",
     "Confirm real delivery in the TradingView log and corresponding stored receipt or price-bar timestamp. "
     "A manual HTTP probe is not proof of TradingView-origin delivery.",
 ])
@@ -562,8 +563,8 @@ story += [table(["Status", "Honest assessment"], [
               ["Implemented and exercised", "Pine detection/diagnostics on ES/NQ 5m, 15m, 1h, 4h; authenticated webhook and durable jobs; "
                "live structured OpenAI review; deterministic validation; persistent storage; protected dashboard; scheduled-news fail-closed gates; "
                "private Telegram transport; mobile checks; automatic NQ paper-outcome infrastructure."],
-              ["Live operational evidence", "321 tests pass. Real price-feed webhook delivered on 13 Nov at 19:40 UTC; backend stored it at 19:40:02. "
-               "Private Telegram diagnostic was received on the phone. These are delivery/code checks, not market-performance proof."],
+              ["Live operational evidence", "328 tests pass. Unified NQ 5m snapshots activated on 19 Nov; see the dated activation report for receipt proof. "
+               "The earlier private Telegram diagnostic reached the phone. These checks do not establish market performance."],
               ["Partial or not implemented", "Order-block fallback is NONE; no IFVG detector or manual final-decision Pine overlay. "
                "SMT is rolling-window, not pivot-aligned. Telegram sentiment is mocked; no normalized summary ingestion workflow is connected. "
                "No comprehensive live headline feed. Gold and broad asset support are absent."],
@@ -579,7 +580,7 @@ story += [table(["Status", "Honest assessment"], [
             "provider data rights and applicable distribution requirements."),
           p("References and evidence", "SubManual"),
           p("Implementation: pine/smc_llm_candidate_detector.pine; backend/app/eligibility.py, validators.py, outcome_engine.py; "
-            "docs/automatic_paper_outcomes.md, automatic_outcome_activation.md, private_telegram_activation_2026_11_13.md, "
+            "docs/unified_nq5m_activation_2026_11_19.md, automatic_paper_outcomes.md, private_telegram_activation_2026_11_13.md, "
             "forward_testing.md, automatic_news_calendar.md, closed_market_testing.md. The July PRD is the baseline; "
             "the dated rollout documents explain subsequent scope changes.", "SmallManual"),
           p('[S1] <link href="https://www.tradingview.com/pine-script-docs/faq/alerts/" color="#006D68">TradingView: alerts and saved snapshots</link><br/>'
@@ -605,7 +606,7 @@ def decoration(canvas, doc):
     canvas.setStrokeColor(LINE)
     canvas.line(46, 39, A4[0] - 46, 39)
     canvas.setFont(BASE, 7.5)
-    canvas.drawString(46, 26, "13 NOV 2026  |  PAPER TESTING ONLY  |  NO ORDERS")
+    canvas.drawString(46, 26, "19 NOV 2026  |  PAPER TESTING ONLY  |  NO ORDERS")
     canvas.drawRightString(A4[0] - 46, 26, f"{doc.page:02d} / 16")
     canvas.restoreState()
 
