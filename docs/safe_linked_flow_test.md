@@ -1,8 +1,22 @@
 # Safe Linked Flow Diagnostic
 
-Prepared locally November 19, 2026. Not deployed or exercised against live
-services at the time this document was written. Password rotation and explicit
-deployment/test confirmation remain outstanding.
+Prepared and deployed November 19, 2026. The owner confirmed password rotation
+and explicitly approved the deployment and one-shot test. Render recorded the
+password environment deployment as Live at 18:03 UTC. The diagnostic release
+`a4149ef` became Live at 18:07 UTC; public `/health` returned `{"status":"ok"}`
+and the new protected diagnostic routes appeared in the deployed API interface.
+
+The linked live test is not yet completed. The browser's cached dashboard
+credentials were rejected after rotation; the owner must authenticate with the
+new password before readiness checks and the one-shot alert change. The new
+password was not read, printed or committed. Both existing alerts were still
+active with test mode off at the pre-test check.
+
+Deployment `dep-dbvjl360tbcc738nbpqg` was pinned to the tested commit using
+Render's specific-commit workflow. Render disables Auto-Deploy in this workflow.
+PR #15 contains these changes; restore ordinary main-branch deployment only
+after the reviewed changes are merged. The older documentation PR #14 overlaps
+with this branch and should not be merged independently without reconciliation.
 
 Baseline suite: 328 passed. With diagnostic coverage: 361 passed, zero failed;
 one existing Starlette/httpx deprecation warning. Tests include authentication,
