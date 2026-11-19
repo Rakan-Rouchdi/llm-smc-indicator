@@ -145,6 +145,8 @@ POST /webhooks/tradingview
 - `GET /notifications` (authenticated notification delivery status)
 - `POST /notifications/test` (authenticated, private Telegram diagnostic only)
 - `GET /notifications/tests/{test_id}` (persisted transport-test result)
+- `POST /diagnostics/flow-tests` (operator-linked test receipt, live review and labelled Telegram diagnostic; never an approval)
+- `GET /diagnostics/flow-tests/{test_id}` (separate, idempotent diagnostic evidence)
 - `GET /evaluation` (authenticated bounded forward-cohort counts, not win rate)
 - `GET /context/news-calendar` (authenticated calendar coverage)
 - `PUT /context/news-calendar` (authenticated complete verified snapshot)

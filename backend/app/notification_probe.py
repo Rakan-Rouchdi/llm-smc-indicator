@@ -17,6 +17,16 @@ class NotificationProbe(BaseModel):
 
 
 def send_telegram_probe(settings, test_id):
+    text = ("SMC NOTIFICATION DELIVERY TEST\n"
+            "Connectivity check only, not a BUY/SELL signal.\n"
+            "No setup, approval or order was created.\n"
+            "News freshness and blackout checks remain enabled for trading candidates.\n"
+            f"Test reference: {test_id}")
+    return send_private_telegram_text(settings, text)
+
+
+def send_private_telegram_text(settings, text):
+    """Internal diagnostic transport; callers supply fixed, labelled test messages."""
     base = f"https://api.telegram.org/bot{settings.telegram_bot_token}"
     chat_id = str(settings.telegram_chat_id)
     with httpx.Client(timeout=settings.notification_timeout_seconds,
@@ -29,11 +39,6 @@ def send_telegram_probe(settings, test_id):
         if (not isinstance(body, dict) or body.get("ok") is not True or not isinstance(chat, dict)
                 or chat.get("type") != "private" or str(chat.get("id")) != chat_id):
             return "FAILED", "PRIVATE_CHAT_REQUIRED"
-        text = ("SMC NOTIFICATION DELIVERY TEST\n"
-                "Connectivity check only, not a BUY/SELL signal.\n"
-                "No setup, approval or order was created.\n"
-                "News freshness and blackout checks remain enabled for trading candidates.\n"
-                f"Test reference: {test_id}")
         response = client.post(base + "/sendMessage", json={
             "chat_id": chat_id, "text": text, "protect_content": True,
         })
