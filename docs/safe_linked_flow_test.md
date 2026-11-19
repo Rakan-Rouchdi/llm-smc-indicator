@@ -6,17 +6,97 @@ password environment deployment as Live at 18:03 UTC. The diagnostic release
 `a4149ef` became Live at 18:07 UTC; public `/health` returned `{"status":"ok"}`
 and the new protected diagnostic routes appeared in the deployed API interface.
 
-The linked live test is not yet completed. The browser's cached dashboard
-credentials were rejected after rotation; the owner must authenticate with the
-new password before readiness checks and the one-shot alert change. The new
-password was not read, printed or committed. Both existing alerts were still
-active with test mode off at the pre-test check.
+The linked live test completed successfully at 18:36 UTC. The owner
+authenticated the protected API interface using the rotated password, then
+confirmed receipt of the labelled Telegram message on their phone. The new
+password was not read, printed or committed. Both existing alerts were restored
+to test mode off, with the candidate's app/toast/webhook channels restored.
 
 Deployment `dep-dbvjl360tbcc738nbpqg` was pinned to the tested commit using
 Render's specific-commit workflow. Render disables Auto-Deploy in this workflow.
 PR #15 contains these changes; restore ordinary main-branch deployment only
 after the reviewed changes are merged. The older documentation PR #14 overlaps
 with this branch and should not be merged independently without reconciliation.
+
+## Live Evidence: November 19, 2026
+
+- Kept candidate alert `6067103295` and outcome-price alert `6067783354`.
+  No alert was created or deleted. Both use unified revision 24 on NQ 5m.
+  The outcome-price alert was not edited.
+- Readiness initially reported BLACKOUT for the 18:00 UTC 10-year TIPS Auction.
+  No override was made. At 18:30:21 UTC fresh automatic calendar coverage
+  reported CLEAR, so the approved candidate-only test proceeded.
+- Candidate test snapshot saved at approximately 18:31:01 UTC, with test=true,
+  SMC setups, JSON enabled and webhook-only delivery. Existing webhook, secret,
+  expiry and rule inputs were left unchanged.
+- TradingView fired at 18:35:00 UTC and its log displayed **Webhook successfully
+  delivered** for `CME_MINI_DL:NQ1!_5_TEST_1795112400000_40078`.
+- Database receipt ID 15 was stored at 18:35:01.280451 UTC. Its raw payload,
+  parsed setup and enriched context were present. The worker completed once
+  without error. Decision ID 15 was recorded at 18:35:04.128085 UTC as
+  `deterministic-preflight` / REJECTED / NO_TRADE. It was NOT_ENQUEUED for normal
+  trading notifications.
+- The chart test input was disabled immediately after receipt verification.
+  Candidate alert test=false and app/toast/webhook settings were saved by
+  18:35:40 UTC. MCP confirmed both original jobs active with test=false.
+  Expiries remained 2027-01-07T18:00:14Z (candidate) and
+  2027-01-07T18:00:41Z (prices).
+- At 18:40:10 UTC, both alerts remained active with test=false. The price job
+  had fired normally at 18:40; the candidate's last fire remained 18:35. No
+  second test occurred at the following confirmed bar.
+- Diagnostic `7ba26ce9-8ffd-4daf-add3-8e76caf38670` references that exact
+  receipt. It ran from 18:36:04.354193 to 18:36:16.019292 UTC, returned SENT,
+  and was independently read back from the diagnostic endpoint.
+- Live model: `gpt-4o-mini`, no fallback. Provider duration: 8426.84 ms.
+  Strict response schema passed. Model action NO_TRADE, confidence 0;
+  deterministic validator REJECTED. Final diagnostic action NO_TRADE and
+  eligible_for_outcomes=false.
+- Verified news was CLEAR both before and after the model call. Automatic
+  refresh subsequently succeeded at 18:37:24 UTC with zero consecutive errors.
+  REQUIRE_VERIFIED_NEWS and all production safety gates remained unchanged.
+- Telegram accepted one labelled **SMC END-TO-END DELIVERY TEST** message.
+  The owner confirmed seeing that message on their phone. No BUY/SELL
+  notification, order or production outcome was created by the diagnostic.
+- Authenticated `/dashboard` returned rendered HTML containing the exact test
+  ID, NO_TRADE and REJECTED. The ordinary Chrome dashboard tab still held stale
+  Basic-auth credentials and returned 401; that is a browser login issue, not a
+  successful fresh visual dashboard check. The failed tab and diagnostic API
+  tab were closed after verification. No password was recovered from either.
+- The forward ledger classified the receipt as DELIVERY_TEST and reported
+  accuracy NOT_ESTABLISHED. It contains two delivery-test receipts in the
+  configured cohort, not two natural approved trades. The latest natural
+  receipt still dates to October 16; this diagnostic does not alter that fact.
+- Final protected status: database ok, worker alive, service_ready=true,
+  armed=true, price feed RECEIVING, one accepted candidate request and zero
+  request errors. Candidate observation was refreshed at 18:39:08 UTC and is
+  explicitly an operator observation, not continuous TradingView monitoring.
+- No trades, broker connection or replay operations were used. No credentials,
+  webhook secrets or full production URLs were printed in the evidence or
+  committed. Pine source and trading rules were not changed for this test.
+
+Screenshot evidence:
+`docs/screenshots/smc_one_shot_webhook_delivered_20261119.png` and
+`docs/screenshots/smc_one_shot_restored_20261119.png`.
+
+Final regression run after evidence updates: 361 passed, zero failed, one
+existing Starlette/httpx deprecation warning. `git diff --check` passed. Root
+and backend `.env` files remain ignored and untracked.
+
+### Measured Latency and Limits
+
+The candle closed at 18:25 UTC; TradingView emitted its delayed-data alert at
+18:35 UTC. Receipt followed emission by approximately 1.28 seconds. The backend
+acknowledged the request in 792.07 ms of measured application time, and recorded
+the normal rejection 2.85 seconds after receipt. The later operator-linked
+OpenAI call took 8.43 seconds. The approximately ten-minute market-data delay
+is therefore upstream, not an OpenAI or webhook-processing delay.
+
+This proves real TradingView receipt, safe preflight rejection, a separately
+invoked live OpenAI review, persistence and private Telegram delivery. It does
+not prove a natural setup's automatic approval/outbox path, trading accuracy,
+profitability, fills or a WIN/LOSS outcome. Incoming Telegram sentiment remains
+mock context; outgoing Telegram notification delivery is live. The current
+delayed-data setup is for testing, not real-time trade execution.
 
 Baseline suite: 328 passed. With diagnostic coverage: 361 passed, zero failed;
 one existing Starlette/httpx deprecation warning. Tests include authentication,
