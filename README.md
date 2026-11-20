@@ -4,6 +4,30 @@ Local MVP for an LLM-powered Smart Money Concepts TradingView workflow.
 
 The MVP is decision support only. It does not place trades, connect to brokers, use replay trading, or create TradingView alerts automatically.
 
+## Private Tester Handbook
+
+[Read the PDF manual](output/pdf/SMC_LLM_Private_Tester_Manual.pdf) before handing
+the indicator to a friend. It covers chart setup, the panel, dependencies,
+dashboard decisions, news gates, Telegram, automatic paper outcomes, safe local
+previews and troubleshooting. It explicitly separates the usable private-testing
+MVP from unfinished PRD scope and commercial-release requirements.
+
+Do not share the owner's operator credentials as a read-only tester login:
+separate tester roles are not implemented. The manual contains no credentials
+or private service URL. Its configuration snapshot is dated November 19, 2026.
+
+The [November 19 activation](docs/unified_nq5m_activation_2026_11_19.md) migrated
+both existing alert snapshots to unified Pine revision 24 on NQ 5m. One visible
+custom indicator serves two separate background jobs: candidates and outcome
+prices. There are no duplicate signal alerts or established forward-test
+WIN/LOSS results. The [November 17 audit](docs/unified_indicator_audit_2026_11_17.md)
+explains the preceding 4h signal scarcity and unchanged detection rules.
+
+Regenerate with `python scripts/build_tester_manual.py` in a documentation
+environment with `reportlab` installed. This is a documentation-only dependency;
+it is not required by the backend. Render and visually review the resulting PDF
+after edits, and verify its 16-page pagination and bookmarks.
+
 ## Current Scope
 
 - Pine indicator implemented and validated through TradingView MCP for ES/NQ on 5m, 15m, 1h, and 4h.
@@ -121,6 +145,8 @@ POST /webhooks/tradingview
 - `GET /notifications` (authenticated notification delivery status)
 - `POST /notifications/test` (authenticated, private Telegram diagnostic only)
 - `GET /notifications/tests/{test_id}` (persisted transport-test result)
+- `POST /diagnostics/flow-tests` (operator-linked test receipt, live review and labelled Telegram diagnostic; never an approval)
+- `GET /diagnostics/flow-tests/{test_id}` (separate, idempotent diagnostic evidence)
 - `GET /evaluation` (authenticated bounded forward-cohort counts, not win rate)
 - `GET /context/news-calendar` (authenticated calendar coverage)
 - `PUT /context/news-calendar` (authenticated complete verified snapshot)
@@ -264,8 +290,9 @@ are submitted. News freshness and blackout gates remain mandatory.
 See [the forward-testing protocol](docs/forward_testing.md) and
 [mobile verification](docs/mobile_forward_validation_2026_11_13.md).
 Optional [automatic paper outcomes](docs/automatic_paper_outcomes.md) use a
-separately approved read-only TradingView price feed. Missing or ambiguous price
-evidence remains UNKNOWN. No trades, fills or realized profits are inferred.
+separately approved read-only alert stream in the same indicator, activated on
+November 19. Missing or ambiguous price evidence remains UNKNOWN. No trades,
+fills or realized profits are inferred.
 
 ## Validation Docs
 

@@ -175,6 +175,18 @@ class NotificationProbeRecord(Base):
     last_error: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
 
+class FlowProbeRecord(Base):
+    __tablename__ = "flow_probes"
+    test_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    setup_id: Mapped[str] = mapped_column(String(255), unique=True)
+    minute_bucket: Mapped[int] = mapped_column(Integer, unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="UNKNOWN")
+    last_error: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    result_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class NotificationAttemptRecord(Base):
     __tablename__ = "notification_attempts"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

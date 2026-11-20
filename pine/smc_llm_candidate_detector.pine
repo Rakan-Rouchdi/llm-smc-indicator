@@ -39,12 +39,19 @@ int stopBufferTicks = input.int(2, "Stop buffer ticks", minval=0)
 int minRuleScore = input.int(75, "Minimum rule score", minval=75, maxval=100)
 int confirmationMaxBars = input.int(6, "Confirmation age limit", minval=3, maxval=6)
 bool showDiagnostics = input.bool(true, "Show diagnostic table")
-string panelMode = input.string("Compact", "Panel mode", options=["Compact", "Diagnostics"])
+string panelMode = input.string("Compact", "Panel mode", options=["Compact", "Diagnostics", "Funnel"])
 bool showZones = input.bool(false, "Show FVG zones")
 bool showProofMarkers = input.bool(false, "Show proof markers")
 bool showProvisionalTrades = input.bool(true, "Show candidate price labels")
 bool enableAlerts = input.bool(true, "Enable alert() JSON payloads")
 bool enableTestWebhookAlert = input.bool(false, "Enable test webhook alert", tooltip="Emits one schema-valid diagnostic payload on the next confirmed realtime bar. Disable after delivery testing.")
+// Append inputs to preserve the positions of existing saved inputs. A single
+// script has two mutually exclusive alert snapshots; price mode never emits a
+// setup/test message. Keep the ordinary chart in SMC setups mode.
+string alertStream = input.string("SMC setups", "Alert stream", options=["SMC setups", "Outcome prices"], group="Background outcome tracking")
+string outcomeFeedId = input.string("nq-paper-v1", "Outcome feed ID", group="Background outcome tracking")
+bool signalMode = alertStream == "SMC setups"
+bool outcomePriceMode = alertStream == "Outcome prices"
 
 // -----------------------------------------------------------------------------+
 // Utility helpers
@@ -236,14 +243,14 @@ if bullishBos
     bosState := "BULLISH"
     bosLevel := lastSwingHigh
     bosBar := bar_index
-    if showProofMarkers
+    if showProofMarkers and signalMode
         f_store_label(label.new(bar_index, high, "BOS BULL", textcolor=color.white, color=color.green))
 
 if bearishBos
     bosState := "BEARISH"
     bosLevel := lastSwingLow
     bosBar := bar_index
-    if showProofMarkers
+    if showProofMarkers and signalMode
         f_store_label(label.new(bar_index, low, "BOS BEAR", textcolor=color.white, color=color.red))
 
 int bosAge = na(bosBar) ? 100000 : bar_index - bosBar
@@ -271,7 +278,7 @@ if newBullFvg
     fvgLow := high[2]
     fvgHigh := low
     fvgBar := bar_index
-    if showZones
+    if showZones and signalMode
         activeFvgBox := box.new(bar_index - 2, fvgHigh, bar_index + setupExpiryBars, fvgLow, xloc=xloc.bar_index, bgcolor=color.new(color.lime, 84), border_color=color.new(color.lime, 35))
         f_store_box(activeFvgBox)
 
@@ -282,7 +289,7 @@ if newBearFvg
     fvgLow := high
     fvgHigh := low[2]
     fvgBar := bar_index
-    if showZones
+    if showZones and signalMode
         activeFvgBox := box.new(bar_index - 2, fvgHigh, bar_index + setupExpiryBars, fvgLow, xloc=xloc.bar_index, bgcolor=color.new(color.red, 84), border_color=color.new(color.red, 35))
         f_store_box(activeFvgBox)
 
@@ -347,7 +354,7 @@ if bullishSweep
     sweepPoolType := watchedLowPool
     sweepBar := bar_index
     lastBullSweepLevel := low
-    if showProofMarkers
+    if showProofMarkers and signalMode
         label sweepLabel = label.new(bar_index, low, "SWEEP BULL", style=label.style_label_up, textcolor=color.white, color=color.new(color.lime, 0))
         f_store_label(sweepLabel)
 
@@ -357,7 +364,7 @@ if bearishSweep
     sweepPoolType := watchedHighPool
     sweepBar := bar_index
     lastBearSweepLevel := high
-    if showProofMarkers
+    if showProofMarkers and signalMode
         label sweepLabel = label.new(bar_index, high, "SWEEP BEAR", style=label.style_label_down, textcolor=color.white, color=color.new(color.red, 0))
         f_store_label(sweepLabel)
 
@@ -383,14 +390,14 @@ var int smtBar = na
 if bullishSmt
     smtState := "BULLISH"
     smtBar := bar_index
-    if showProofMarkers
+    if showProofMarkers and signalMode
         label smtLabel = label.new(bar_index, low, "SMT BULL", style=label.style_label_up, textcolor=color.white, color=color.new(color.teal, 0))
         f_store_label(smtLabel)
 
 if bearishSmt
     smtState := "BEARISH"
     smtBar := bar_index
-    if showProofMarkers
+    if showProofMarkers and signalMode
         label smtLabel = label.new(bar_index, high, "SMT BEAR", style=label.style_label_down, textcolor=color.white, color=color.new(color.maroon, 0))
         f_store_label(smtLabel)
 
@@ -426,7 +433,7 @@ if barstate.isconfirmed
     consolidationClearBars := rawConsolidation or na(path) or na(atr) ? 0 : math.min(2, consolidationClearBars + 1)
 bool consolidationActive = rawConsolidation or consolidationClearBars < 2
 
-bgcolor(consolidationActive ? color.new(color.gray, 88) : na, title="Consolidation shading")
+bgcolor(signalMode and consolidationActive ? color.new(color.gray, 88) : na, title="Consolidation shading")
 
 // The PRD default is 60m. Escalate it on 1h/4h charts so this is always a
 // higher-timeframe filter; a user-selected timeframe above the chart wins.
@@ -498,20 +505,48 @@ float selectedRR = chooseBull ? bullRR : chooseBear ? bearRR : na
 bool selectedCandidate = chooseBull or chooseBear
 bool alreadyAlertedThisFvg = not na(alertedFvgBar) and not na(fvgBar) and alertedFvgBar == fvgBar
 bool newCandidate = selectedCandidate and not alreadyAlertedThisFvg
-bool shouldAlert = enableAlerts and not enableTestWebhookAlert and newCandidate
+bool shouldAlert = signalMode and enableAlerts and not enableTestWebhookAlert and newCandidate
 
 // A rolling window makes the chart's recent setup frequency visible without
 // changing candidate eligibility or emitting diagnostic alerts.
 int recentFvgRetests = int(math.sum(barstate.isconfirmed and fvgTouched ? 1 : 0, 100))
 int recentCandidates = int(math.sum(selectedCandidate and not alreadyAlertedThisFvg ? 1 : 0, 100))
 
+// Cumulative gate counts, not independent success rates. Evaluate before FVG
+// mitigation and on closed bars only, so the last failed setup is not erased
+// by the post-retest lifecycle or replaced with an intrabar preview.
+bool auditData = barstate.isconfirmed and supportedChart and sessionDataReady and companionAligned
+bool auditRetest = auditData and fvgTouched
+bool auditSequence = auditRetest and sequenceValid
+bool auditStructure = auditSequence and ((activeBullFvg and bullBosRecent and htfBias == "BULLISH") or (activeBearFvg and bearBosRecent and htfBias == "BEARISH"))
+bool auditLiquidity = auditStructure and ((activeBullFvg and (bullSweepRecent or bullSmtRecent)) or (activeBearFvg and (bearSweepRecent or bearSmtRecent)))
+bool auditConsolidation = auditLiquidity and not consolidationActive
+bool auditVolume = auditConsolidation and volumeAllowed
+bool auditScore = auditVolume and (activeBullFvg ? bullScore >= minRuleScore : bearScore >= minRuleScore)
+int auditClosedCount = int(math.sum(barstate.isconfirmed ? 1 : 0, 100))
+int auditDataCount = int(math.sum(auditData ? 1 : 0, 100))
+int auditRetestCount = int(math.sum(auditRetest ? 1 : 0, 100))
+int auditSequenceCount = int(math.sum(auditSequence ? 1 : 0, 100))
+int auditStructureCount = int(math.sum(auditStructure ? 1 : 0, 100))
+int auditLiquidityCount = int(math.sum(auditLiquidity ? 1 : 0, 100))
+int auditConsolidationCount = int(math.sum(auditConsolidation ? 1 : 0, 100))
+int auditVolumeCount = int(math.sum(auditVolume ? 1 : 0, 100))
+int auditScoreCount = int(math.sum(auditScore ? 1 : 0, 100))
+int auditRiskCount = int(math.sum(selectedCandidate ? 1 : 0, 100))
+int auditNeutralCount = int(math.sum(barstate.isconfirmed and htfBias == "NEUTRAL" ? 1 : 0, 100))
+var string lastClosedGate = "NO CLOSED BAR"
+var int lastClosedAt = na
+if barstate.isconfirmed
+    lastClosedGate := not auditData ? "Chart / minute / companion data" : not auditRetest ? "No valid FVG retest" : not auditSequence ? "Sequence / age" : not auditStructure ? "BOS + HTF" : not auditLiquidity ? "Liquidity" : not auditConsolidation ? "Consolidation" : not auditVolume ? "Thin volume" : not auditScore ? "Score" : not selectedCandidate ? "Risk geometry" : alreadyAlertedThisFvg ? "Already emitted" : "CANDIDATE"
+    lastClosedAt := time_close
+
 // Test delivery is intentionally stricter than alert.freq_once_per_bar_close:
 // the latch permits one alert for the entire enabled runtime, not one per bar.
 // Toggling the input off and on starts a new runtime and rearms the latch.
 var bool testWebhookAlertSent = false
-bool shouldSendTestWebhook = enableAlerts and enableTestWebhookAlert and barstate.isrealtime and barstate.isconfirmed and not testWebhookAlertSent
+bool shouldSendTestWebhook = signalMode and enableAlerts and enableTestWebhookAlert and barstate.isrealtime and barstate.isconfirmed and not testWebhookAlertSent
 
-if newCandidate and showProvisionalTrades
+if newCandidate and showProvisionalTrades and signalMode
     string prices = "\nEntry " + f_num(entryPreferred) + " | SL " + f_num(selectedStop) + "\nTP " + f_num(selectedTarget) + " | RR " + f_num(selectedRR)
     label candidateLabel = label.new(bar_index, chooseBull ? low : high, (chooseBull ? "BUY CANDIDATE" : "SELL CANDIDATE") + prices, style=chooseBull ? label.style_label_up : label.style_label_down, textcolor=color.white, color=chooseBull ? color.new(color.green, 0) : color.new(color.red, 0), size=size.small)
     f_store_label(candidateLabel)
@@ -615,7 +650,8 @@ if barstate.isconfirmed and (fvgState == "BULLISH" or fvgState == "BEARISH") and
 // near misses. Counts cover the most recent 100 bars loaded on the chart.
 // -----------------------------------------------------------------------------+
 // Opaque cell borders prevent price wicks bleeding through the one-pixel gaps.
-var table diag = table.new(position.top_right, 2, panelMode == "Compact" ? 8 : 20, frame_color=color.rgb(110, 113, 118), frame_width=1, border_color=color.rgb(45, 48, 54), border_width=1)
+// Center the taller audit panel below TradingView's symbol/OHLC legend.
+var table diag = table.new(panelMode == "Funnel" ? position.middle_right : position.top_right, 2, panelMode == "Compact" ? 8 : 20, frame_color=color.rgb(110, 113, 118), frame_width=1, border_color=color.rgb(45, 48, 54), border_width=1)
 
 f_table_row(int row, string name, string value) =>
     table.cell(diag, 0, row, name, text_color=color.white, bgcolor=color.rgb(26, 29, 34), text_size=size.small)
@@ -635,7 +671,12 @@ if showDiagnostics and barstate.islast
     string blocker = not supportedChart ? "Unsupported chart" : not sessionDataReady ? "1m data incomplete" : not companionAligned ? "Companion data" : consolidationActive ? "Consolidation" : not hasDirectionalFvg ? "No active FVG" : not fvgTouched ? "Await retest" : not sequenceValid ? "Sequence/age" : not structureGate ? "BOS + HTF" : not liquidityGate ? "Liquidity" : not volumeAllowed ? "Thin volume" : directionalScore < minRuleScore ? "Score" : not riskGate ? "Risk geometry" : alreadyAlertedThisFvg ? "Already emitted" : "Await close"
     string candleStatus = barstate.isconfirmed ? "CLOSED" : "OPEN / PREVIEW"
     string sessionStatus = not sessionDataReady ? "MISSING / PARTIAL" : barstate.isconfirmed ? "COMPLETE" : "PREVIEW"
-    if panelMode == "Compact"
+    if outcomePriceMode
+        f_table_row(0, "Alert stream", "OUTCOME PRICES ONLY")
+        f_table_row(1, "Setup / test alerts", "DISABLED")
+        f_table_row(2, "Price output", enableAlerts ? "ENABLED" : "OFF")
+        f_table_row(3, "Chart", chart.is_standard and timeframe.period == "5" and (syminfo.root == "ES" or syminfo.root == "NQ") ? "ES/NQ 5m" : "UNSUPPORTED")
+    else if panelMode == "Compact"
         f_table_row(0, "SMC strict_v1", candidateDirection == "NONE" ? "WAIT" : candidateDirection)
         f_table_row(1, "Gate", selectedCandidate ? "PASS" : blocker)
         f_table_row(2, "Candle", candleStatus)
@@ -644,6 +685,24 @@ if showDiagnostics and barstate.islast
         f_table_row(5, "Session (1m)", na(sessionAsOf) ? "NO DATA" : sessionName)
         f_table_row(6, "Setups / 100 bars", str.tostring(recentCandidates))
         f_table_row(7, "News / final decision", "Backend only")
+    else if panelMode == "Funnel"
+        f_table_row(0, "CLOSED bars / last 100", str.tostring(auditClosedCount))
+        f_table_row(1, "1. Data ready", str.tostring(auditDataCount))
+        f_table_row(2, "2. Valid FVG retest", str.tostring(auditRetestCount))
+        f_table_row(3, "3. Sequence / age", str.tostring(auditSequenceCount))
+        f_table_row(4, "4. BOS + HTF", str.tostring(auditStructureCount))
+        f_table_row(5, "5. Liquidity", str.tostring(auditLiquidityCount))
+        f_table_row(6, "6. Not consolidated", str.tostring(auditConsolidationCount))
+        f_table_row(7, "7. Volume", str.tostring(auditVolumeCount))
+        f_table_row(8, "8. Score >= " + str.tostring(minRuleScore), str.tostring(auditScoreCount))
+        f_table_row(9, "9. Risk / candidate", str.tostring(auditRiskCount))
+        f_table_row(10, "10. Unique setups", str.tostring(recentCandidates))
+        f_table_row(11, "HTF " + effectiveHtfTimeframe + " neutral bars", str.tostring(auditNeutralCount))
+        f_table_row(12, "Last CLOSED gate", lastClosedGate)
+        f_table_row(13, "Last close (UTC)", na(lastClosedAt) ? "NONE" : str.format_time(lastClosedAt, "MM-dd HH:mm", "UTC"))
+        f_table_row(14, "Counts", "CUMULATIVE / NOT WIN RATE")
+        f_table_row(15, "Alert stream", "SMC SETUPS")
+        f_table_row(16, "JSON / test", (enableAlerts ? "ON" : "OFF") + " / " + (enableTestWebhookAlert ? "ON" : "OFF"))
     else
         f_table_row(0, "Candle", candleStatus)
         f_table_row(1, "Gate", selectedCandidate ? "PASS" : blocker)
@@ -665,3 +724,41 @@ if showDiagnostics and barstate.islast
         f_table_row(17, "Score / minimum", str.tostring(directionalScore) + "/100 | " + str.tostring(minRuleScore))
         f_table_row(18, "Retests / setups 100", str.tostring(recentFvgRetests) + "/" + str.tostring(recentCandidates))
         f_table_row(19, "Candidate", candidateDirection)
+
+// -----------------------------------------------------------------------------+
+// Read-only outcome evidence, integrated into the same indicator. Select this
+// stream ONLY for the background 5m alert; its endpoint is /webhooks/tradingview/
+// prices. The default SMC setup stream never sends these messages. Separate
+// snapshots preserve confirmed-bar signal timing without intrabar scheduling.
+// -----------------------------------------------------------------------------+
+f_price_time(int at) =>
+    str.format_time(at, "yyyy-MM-dd'T'HH:mm:ss'Z'", "UTC")
+
+bool priceChartSupported = chart.is_standard and timeframe.period == "5" and (syminfo.root == "ES" or syminfo.root == "NQ")
+bool priceFeedIdValid = not na(str.match(outcomeFeedId, "^[A-Za-z0-9_-]{1,64}$"))
+var array<string> priceHistory = array.new_string()
+var int lastPriceClose = na
+if outcomePriceMode and priceChartSupported
+    string priceTicker = ticker.modify(alertSymbol, session=session.extended, backadjustment=backadjustment.off, settlement_as_close=settlement_as_close.off)
+    [priceOpensAt, priceClosesAt, priceOpens, priceHighs, priceLows, priceCloses, priceContracts] = request.security_lower_tf(priceTicker, "1", [time, time_close, open, high, low, close, syminfo.current_contract], ignore_invalid_timeframe=true)
+    if barstate.isconfirmed
+        if array.size(priceOpensAt) > 0
+            for i = 0 to array.size(priceOpensAt) - 1
+                string contract = array.get(priceContracts, i)
+                int closesAt = array.get(priceClosesAt, i)
+                if not na(contract) and str.length(contract) > 0 and closesAt <= time_close and (not barstate.isrealtime or closesAt <= timenow)
+                    string row = "{\"open_time\":\"" + f_price_time(array.get(priceOpensAt, i)) + "\",\"close_time\":\"" + f_price_time(closesAt) + "\",\"contract\":\"" + contract + "\""
+                    row += ",\"open\":" + str.tostring(array.get(priceOpens, i), format.mintick) + ",\"high\":" + str.tostring(array.get(priceHighs, i), format.mintick)
+                    row += ",\"low\":" + str.tostring(array.get(priceLows, i), format.mintick) + ",\"close\":" + str.tostring(array.get(priceCloses, i), format.mintick) + "}"
+                    array.push(priceHistory, row)
+                    lastPriceClose := closesAt
+                    if array.size(priceHistory) > 20
+                        array.shift(priceHistory)
+        if enableAlerts and priceFeedIdValid and barstate.isrealtime and array.size(priceHistory) > 0
+            string pricePayload = "{\"schema_version\":\"1.0\",\"source\":\"tradingview_price_feed\",\"feed_revision\":\"paper_ohlcv_v1\",\"feed_id\":\"" + outcomeFeedId + "\""
+            pricePayload += ",\"symbol\":\"" + alertSymbol + "\",\"price_basis\":\"standard_unadjusted\",\"emitted_at\":\"" + f_price_time(timenow) + "\",\"bars\":[" + array.join(priceHistory, ",") + "]}"
+            alert(pricePayload, alert.freq_once_per_bar_close)
+if showDiagnostics and barstate.islast and outcomePriceMode
+    f_table_row(4, "Feed ID", priceFeedIdValid ? outcomeFeedId : "INVALID / OUTPUT BLOCKED")
+    f_table_row(5, "Buffered minute bars", str.tostring(array.size(priceHistory)))
+    f_table_row(6, "Latest price close (UTC)", na(lastPriceClose) ? "NONE" : str.format_time(lastPriceClose, "MM-dd HH:mm", "UTC"))

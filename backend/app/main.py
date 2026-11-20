@@ -20,9 +20,10 @@ from app.dashboard import router as dashboard_router
 from app.forward_testing import router as forward_testing_router
 from app.delivery import delivery_report, evaluation_summary
 from app.database import get_db, init_db
-from app.models import DecisionJobRecord, LLMDecisionRecord, SetupAlertRecord, AlertObservationRecord, NotificationRecord, NotificationProbeRecord
+from app.models import DecisionJobRecord, LLMDecisionRecord, SetupAlertRecord, AlertObservationRecord, NotificationRecord, NotificationProbeRecord, FlowProbeRecord
 from app.monitoring import ReceiptTimingMiddleware, operational_status
 from app.notification_probe import NotificationProbe, run_probe, serialize_probe
+from app.flow_probe import FlowProbe, run_flow_probe, serialize_flow_probe
 from app.news import replace_calendar, calendar_context
 from app.news_refresh import CalendarRefreshWorker
 from app.logging_config import protect_access_logs
@@ -282,3 +283,16 @@ async def tradingview_webhook(
     if worker is not None:
         worker.notify()
     return JSONResponse(acknowledgement, status_code=200 if acknowledgement["duplicate"] else 202)
+
+
+@app.post("/diagnostics/flow-tests", dependencies=[Depends(require_dashboard_auth)])
+def flow_test(payload: FlowProbe, db: Annotated[Session, Depends(get_db)]):
+    return run_flow_probe(db, get_settings(), payload)
+
+
+@app.get("/diagnostics/flow-tests/{test_id}", dependencies=[Depends(require_dashboard_auth)])
+def flow_test_status(test_id: str, db: Annotated[Session, Depends(get_db)]):
+    row = db.get(FlowProbeRecord, test_id)
+    if row is None:
+        raise HTTPException(404, "Flow test not found")
+    return serialize_flow_probe(row)

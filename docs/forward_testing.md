@@ -13,8 +13,14 @@ annotations are displayed separately; uncertain automatic cases remain UNKNOWN.
 
 - Fixed cohort start: November 13, 2026 at 17:10:12 UTC, creation of the approved
   revision-19 alert. Expected detector `timing_sessions_v2`, policy `strict_v1`.
-- The existing single alert monitors NQ 4h on a delayed feed. Chart testing on
-  other instruments/timeframes does not mean they have active production alerts.
+- The candidate alert moved from delayed NQ 4h to delayed NQ 5m on November 19,
+  2026 at approximately 16:23 UTC. The original cohort/history is retained.
+  Review post-migration 5m records separately from the preceding 4h window;
+  do not combine them into a like-for-like performance claim. The dashboard's
+  "Revision 19 cohort" label names the original protocol, not the current Pine
+  saved version (24). Detector and policy identifiers are unchanged.
+- One visible indicator supplies one candidate alert plus one data-only price
+  alert. Other validated instruments/timeframes have no implied live alert.
 - All receipts after the start are listed, including tests, legacy, blocked,
   fallback and pending records. Eligibility is a separate column; low activity
   and rejection patterns must not disappear from evaluation.
